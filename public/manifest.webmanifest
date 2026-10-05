@@ -1,0 +1,9 @@
+{
+  "name": "MA Coffee POS",
+  "short_name": "MA POS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f1eb",
+  "theme_color": "#6f4e37",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

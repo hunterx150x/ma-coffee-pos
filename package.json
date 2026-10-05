@@ -1,0 +1,28 @@
+{
+  "name": "ma-coffee-pos",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n api,web -c yellow,cyan \"node server/index.js\" \"vite --host\"",
+    "dev:api": "node server/index.js",
+    "dev:web": "vite --host",
+    "build": "vite build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^8.2.2",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^4.5.14"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
