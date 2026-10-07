@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import QRCode from 'qrcode';
 import { api } from '../api.js';
 import { priceLine, summarize } from '../../shared/pricing.js';
-import { baht, discountLabel, sweetLabel, promptPayPayload, initial } from '../utils.js';
+import { baht, discountLabel, sweetLabel, initial } from '../utils.js';
 import { Icon, Modal, Field, Loading, ErrorBox, Empty, useAsync, useUi } from '../components/ui.jsx';
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
+import PaymentModal from '../components/PaymentModal.jsx';
+import HowToModal from '../components/HowTo.jsx';
 
 const STEPS = ['ลูกค้า', 'ประเภท', 'เมนู', 'ความหวาน', 'ท็อปปิ้ง', 'ส่วนลด', 'สรุปรายการ', 'ชำระเงิน'];
 const CART_KEY = 'ma_pos_cart';
@@ -20,7 +21,7 @@ function loadSaved() {
   return null;
 }
 
-export default function Pos() {
+export default function Pos({ go }) {
   const { toast, confirm } = useUi();
   const cat = useAsync(() => api('/catalog'), []);
   const saved = useMemo(loadSaved, []);
@@ -31,6 +32,9 @@ export default function Pos() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [doneOrder, setDoneOrder] = useState(null);
+  const [howToLine, setHowToLine] = useState(null);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [doneQueue, setDoneQueue] = useState(null);
 
   useEffect(() => {
     try {
@@ -135,6 +139,18 @@ export default function Pos() {
     const order = await api('/orders', { method: 'POST', body });
     setPayOpen(false);
     setDoneOrder(order);
+    resetAll();
+  };
+
+  // Sell now, pay later: park the bill in the queue (customer name is not saved as a customer record).
+  const addToQueue = async ({ name, note }) => {
+    const q = await api('/queues', {
+      method: 'POST',
+      body: { name, note, items: cart, customer: customer.type === 'old' ? { type: 'old', id: customer.id } : null },
+    });
+    window.dispatchEvent(new Event('pos:queues-changed'));
+    setQueueOpen(false);
+    setDoneQueue(q);
     resetAll();
   };
 
@@ -308,7 +324,7 @@ export default function Pos() {
           <section>
             <h2 className="step-title">สรุปรายการ</h2>
             {lines.length ? (
-              <CartList lines={lines} onEdit={editLine}
+              <CartList lines={lines} onEdit={editLine} onHowTo={setHowToLine}
                 onQty={(i, q) => setCart((c) => c.map((x, j) => (j === i ? { ...x, qty: q } : x)))}
                 onRemove={async (i) => {
                   if (await confirm({ message: `ลบ “${lines[i].name}” ออกจากรายการ?`, okText: 'ลบ', danger: true })) {
@@ -335,7 +351,7 @@ export default function Pos() {
               </div>
               {customer.phone && <div className="sum-row"><span className="muted">เบอร์โทร</span><span>{customer.phone}</span></div>}
             </div>
-            <CartList lines={lines} readOnly />
+            <CartList lines={lines} readOnly onHowTo={setHowToLine} />
             <Totals totals={totals} />
             <div className="due">
               <span>ยอดที่ลูกค้าต้องชำระ</span>
@@ -343,6 +359,9 @@ export default function Pos() {
             </div>
             <div className="step-actions step-actions-split">
               <button className="btn btn-outline btn-lg" onClick={() => setStep(7)}><Icon name="edit" /> แก้ไขรายการ</button>
+              <button className="btn btn-outline btn-lg btn-queue" disabled={!lines.length} onClick={() => setQueueOpen(true)}>
+                <Icon name="queue" /> เพิ่มไปที่คิว
+              </button>
               <button className="btn btn-success btn-lg" disabled={!lines.length} onClick={() => setPayOpen(true)}>
                 <Icon name="check" /> ยืนยันการชำระเงิน
               </button>
@@ -384,6 +403,28 @@ export default function Pos() {
       </Modal>
 
       <PaymentModal open={payOpen} total={totals.total} settings={catalog.settings} onClose={() => setPayOpen(false)} onPay={pay} />
+
+      <HowToModal line={howToLine} catalog={catalog} onClose={() => setHowToLine(null)} />
+
+      <AddQueueModal open={queueOpen} defaultName={customer.name} total={totals.total} cups={totals.cups}
+        onClose={() => setQueueOpen(false)} onSubmit={addToQueue} />
+
+      <Modal open={!!doneQueue} title="เพิ่มเข้าคิวแล้ว" size="sm" onClose={() => setDoneQueue(null)}
+        footer={(
+          <>
+            <button className="btn btn-outline" onClick={() => { setDoneQueue(null); go('queue'); }}>ไปหน้าคิว</button>
+            <button className="btn btn-primary" onClick={() => setDoneQueue(null)}>รับออเดอร์ถัดไป</button>
+          </>
+        )}>
+        {doneQueue && (
+          <div className="queue-ticket">
+            <div className="muted">หมายเลขคิว</div>
+            <div className="queue-ticket-no">{doneQueue.queueNo}</div>
+            <div><b>{doneQueue.name}</b></div>
+            <div className="muted small">{doneQueue.cups} แก้ว · {baht(doneQueue.total)} · ชำระเงินเมื่อรับสินค้า</div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!doneOrder} title="ชำระเงินสำเร็จ" onClose={() => setDoneOrder(null)}
         footer={(
@@ -512,7 +553,7 @@ function Qty({ value, onChange }) {
   );
 }
 
-function CartList({ lines, onEdit, onRemove, onQty, readOnly, compact }) {
+function CartList({ lines, onEdit, onRemove, onQty, onHowTo, readOnly, compact }) {
   return (
     <div className={`cart ${compact ? 'cart-compact' : ''}`}>
       {lines.map((l, i) => (
@@ -523,6 +564,9 @@ function CartList({ lines, onEdit, onRemove, onQty, readOnly, compact }) {
               <span className="muted small"> {baht(l.unitPrice)}/แก้ว</span>
             </div>
             <LineDetail line={l} />
+            {onHowTo && (
+              <button className="btn btn-sm btn-ghost btn-howto" onClick={() => onHowTo(l)}><Icon name="book" size={16} /> ดูวิธีทำ</button>
+            )}
           </div>
           <div className="cart-line-side">
             <b>{baht(l.total)}</b>
@@ -551,95 +595,42 @@ function Totals({ totals }) {
   );
 }
 
-function PaymentModal({ open, total, settings, onClose, onPay }) {
-  const [method, setMethod] = useState(null);
-  const [cash, setCash] = useState('');
+function AddQueueModal({ open, defaultName, total, cups, onClose, onSubmit }) {
+  const [name, setName] = useState('');
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [qr, setQr] = useState(null);
-
   useEffect(() => {
-    if (open) { setMethod(null); setCash(''); setErr(''); }
-  }, [open]);
-
-  useEffect(() => {
-    setQr(null);
-    if (method !== 'transfer' || !settings.promptPayId) return;
-    const payload = promptPayPayload(settings.promptPayId, total);
-    if (payload) QRCode.toDataURL(payload, { margin: 1, width: 240 }).then(setQr).catch(() => setQr(null));
-  }, [method, total, settings.promptPayId]);
-
-  const received = cash === '' ? total : Number(cash);
-  const change = received - total;
-  const quick = [...new Set([total, Math.ceil(total / 20) * 20, Math.ceil(total / 100) * 100, 500, 1000])].filter((v) => v >= total).slice(0, 5);
-
+    if (open) { setName(defaultName || ''); setNote(''); setErr(''); }
+  }, [open, defaultName]);
   const submit = async () => {
-    if (method === 'cash' && change < 0) return setErr('จำนวนเงินที่รับมาไม่พอ');
     setBusy(true);
     setErr('');
     try {
-      await onPay({ method, cashReceived: method === 'cash' ? received : undefined });
+      await onSubmit({ name: name.trim(), note: note.trim() });
     } catch (e) {
       setErr(e.message);
     } finally {
       setBusy(false);
     }
   };
-
   return (
-    <Modal open={open} title="เลือกวิธีชำระเงิน" onClose={busy ? undefined : onClose}
+    <Modal open={open} title="เพิ่มไปที่คิว" size="sm" onClose={busy ? undefined : onClose}
       footer={(
         <>
           <button className="btn btn-ghost" onClick={onClose} disabled={busy}>ยกเลิก</button>
-          <button className="btn btn-success" disabled={!method || busy || (method === 'cash' && change < 0)} onClick={submit}>
-            {busy ? 'กำลังบันทึก...' : 'ยืนยันรับเงิน'}
-          </button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy}>{busy ? 'กำลังบันทึก...' : 'เพิ่มเข้าคิว'}</button>
         </>
       )}>
-      <div className="due due-sm"><span>ยอดชำระ</span><b>{baht(total)}</b></div>
-      <div className="grid grid-2">
-        <button className={`tile tile-pay ${method === 'cash' ? 'selected' : ''}`} onClick={() => setMethod('cash')}>
-          <Icon name="cash" size={32} /><span className="tile-name">เงินสด</span>
-        </button>
-        <button className={`tile tile-pay ${method === 'transfer' ? 'selected' : ''}`} onClick={() => setMethod('transfer')}>
-          <Icon name="qr" size={32} /><span className="tile-name">เงินโอน / QR</span>
-        </button>
-      </div>
-
-      {method === 'cash' && (
-        <div className="pay-cash">
-          <Field label="รับเงินมา (บาท)">
-            <input className="input input-lg" type="number" inputMode="decimal" min={0} placeholder={String(total)} value={cash}
-              onChange={(e) => setCash(e.target.value)} autoFocus />
-          </Field>
-          <div className="chips">
-            {quick.map((v) => (
-              <button key={v} className={`chip ${received === v ? 'active' : ''}`} onClick={() => setCash(String(v))}>
-                {v === total ? `พอดี ${baht(v)}` : baht(v)}
-              </button>
-            ))}
-          </div>
-          <div className={`change-box ${change < 0 ? 'neg' : ''}`}>
-            <span>{change < 0 ? 'ยังขาดอีก' : 'เงินทอน'}</span>
-            <b>{baht(Math.abs(change))}</b>
-          </div>
-        </div>
-      )}
-
-      {method === 'transfer' && (
-        <div className="pay-transfer">
-          {settings.promptPayId ? (
-            qr ? (
-              <>
-                <img src={qr} alt="PromptPay QR" width="220" height="220" />
-                <div className="muted small">PromptPay: {settings.promptPayId}</div>
-              </>
-            ) : <Loading />
-          ) : (
-            <p className="muted">ตรวจสอบยอดโอนจากลูกค้า แล้วกด “ยืนยันรับเงิน”<br /><span className="small">(ตั้งค่าเลขพร้อมเพย์ที่ “ตั้งค่าร้าน” เพื่อแสดง QR อัตโนมัติ)</span></p>
-          )}
-        </div>
-      )}
+      <p className="muted small">ทำเมนูก่อน แล้วรับชำระเงินเมื่อลูกค้ารับสินค้าที่หน้า “คิว” — ชื่อนี้ใช้เรียกคิวเท่านั้น ไม่ถูกบันทึกเป็นข้อมูลลูกค้า</p>
+      <Field label="ชื่อลูกค้า (สำหรับเรียกคิว)">
+        <input className="input input-lg" value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น พี่เสื้อแดง" autoFocus
+          onKeyDown={(e) => e.key === 'Enter' && submit()} />
+      </Field>
+      <Field label="หมายเหตุ (ถ้ามี)">
+        <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น รอที่โต๊ะ 3" />
+      </Field>
+      <div className="sum-row sum-total"><span>{cups} แก้ว</span><span>{baht(total)}</span></div>
       {err && <div className="field-error">{err}</div>}
     </Modal>
   );

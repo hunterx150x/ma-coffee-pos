@@ -534,3 +534,53 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
 .settings-grid .card { margin: 0; }
 .settings-grid .card-title { margin-bottom: 0; }
+
+/* ---------- queue ---------- */
+.nav-item { position: relative; }
+.nav-badge { margin-left: auto; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; display: inline-grid; place-items: center; }
+.nav-item.active .nav-badge { background: #fff; color: var(--primary); }
+.bottom-icon { position: relative; display: inline-flex; }
+.nav-badge-dot { position: absolute; top: -6px; right: -12px; height: 18px; min-width: 18px; padding: 0 5px; font-size: 11px; margin: 0; }
+.btn-queue { color: var(--info); border-color: #bcd6e6; }
+.queue-ticket { text-align: center; padding: 8px 0; display: flex; flex-direction: column; gap: 4px; }
+.queue-ticket-no { font-size: 72px; font-weight: 700; line-height: 1; color: var(--primary); }
+.queue-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.queue-card { margin: 0; display: flex; flex-direction: column; gap: 10px; border-left: 5px solid var(--line-2); }
+.queue-waiting { border-left-color: var(--warn); }
+.queue-done { border-left-color: var(--info); }
+.queue-paid { border-left-color: var(--good); opacity: .85; }
+.queue-cancelled { border-left-color: var(--bad); opacity: .7; }
+.queue-head { display: flex; align-items: center; gap: 12px; }
+.queue-no { width: 52px; height: 52px; border-radius: 14px; background: var(--primary); color: #fff; font-size: 24px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
+.queue-done .queue-no { background: var(--info); }
+.queue-paid .queue-no { background: var(--good); }
+.queue-cancelled .queue-no { background: var(--muted); }
+.queue-head-main { flex: 1; min-width: 0; }
+.queue-name { font-size: 17px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-lines { display: flex; flex-direction: column; gap: 8px; }
+.queue-line { padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+.queue-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.queue-actions .btn { flex: 1; }
+.queue-card .sum-total { margin-top: 0; }
+
+/* ---------- how-to ---------- */
+.btn-howto { margin-top: 6px; min-height: 34px; padding: 0 10px; color: var(--primary-600); }
+.howto-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.howto-h { font-size: 15px; margin: 4px 0 8px; }
+.howto-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.howto-steps li { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; }
+.howto-num { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 600; font-size: 14px; display: grid; place-items: center; flex-shrink: 0; }
+.howto-ing { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+.howto-table td { padding: 8px 4px; }
+.step-row { display: flex; gap: 8px; align-items: flex-start; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.step-row .howto-num { margin-top: 8px; }
+.step-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.step-row-ing { display: grid; grid-template-columns: minmax(0, 1fr) 90px 48px; gap: 6px; align-items: center; }
+.step-row-ing:has(> :only-child) { grid-template-columns: 1fr; }
+.step-row-tools { display: flex; flex-direction: column; }
+.step-row-tools .icon-btn { width: 34px; height: 30px; }
+.align-start { align-self: flex-start; }
+@media (max-width: 599px) {
+  /* Pay is the main action: give it the full first row when step 8 has three buttons. */
+  .step-actions-split > .btn-success { flex-basis: 100%; order: -1; }
+}

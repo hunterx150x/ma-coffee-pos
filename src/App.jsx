@@ -5,6 +5,7 @@ import { hasPerm, ROLES } from '../shared/permissions.js';
 import { Icon, Loading, Modal, Field, useUi } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
 import Pos from './pages/Pos.jsx';
+import Queue from './pages/Queue.jsx';
 import Orders from './pages/Orders.jsx';
 import Reports from './pages/Reports.jsx';
 import Products from './pages/Products.jsx';
@@ -19,6 +20,7 @@ export const useAuth = () => useContext(AuthCtx);
 
 export const ROUTES = [
   { key: 'pos', label: 'ขายหน้าร้าน', icon: 'pos', perm: 'pos', component: Pos },
+  { key: 'queue', label: 'คิว', icon: 'queue', perm: 'queue', component: Queue },
   { key: 'orders', label: 'ประวัติการขาย', icon: 'orders', perm: 'orders', component: Orders },
   { key: 'reports', label: 'รายงาน', icon: 'reports', perm: 'reports', component: Reports },
   { key: 'products', label: 'เมนู & ราคา', icon: 'products', perm: 'products', component: Products },
@@ -49,6 +51,7 @@ export default function App() {
   const [route, go] = useHashRoute();
   const [navOpen, setNavOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [openQueues, setOpenQueues] = useState(0);
 
   useEffect(() => {
     if (!getToken()) return;
@@ -63,6 +66,23 @@ export default function App() {
     window.addEventListener('pos:logout', out);
     return () => window.removeEventListener('pos:logout', out);
   }, []);
+
+  // Badge with today's unpaid queues, refreshed in the background.
+  useEffect(() => {
+    if (!user || !hasPerm(user, 'queue')) return undefined;
+    let alive = true;
+    const load = () => api('/queues/open-count').then((r) => alive && setOpenQueues(r.count)).catch(() => {});
+    load();
+    const t = setInterval(load, 15000);
+    window.addEventListener('hashchange', load);
+    window.addEventListener('pos:queues-changed', load);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener('hashchange', load);
+      window.removeEventListener('pos:queues-changed', load);
+    };
+  }, [user]);
 
   const logout = () => {
     setToken(null);
@@ -98,6 +118,7 @@ export default function App() {
                 onClick={() => setNavOpen(false)}>
                 <Icon name={r.icon} />
                 <span>{r.label}</span>
+                {r.key === 'queue' && openQueues > 0 && <span className="nav-badge">{openQueues}</span>}
               </a>
             ))}
           </nav>
@@ -131,7 +152,10 @@ export default function App() {
           <nav className="bottombar">
             {bottom.map((r) => (
               <a key={r.key} href={`#/${r.key}`} className={`bottom-item ${current?.key === r.key ? 'active' : ''}`}>
-                <Icon name={r.icon} />
+                <span className="bottom-icon">
+                  <Icon name={r.icon} />
+                  {r.key === 'queue' && openQueues > 0 && <span className="nav-badge nav-badge-dot">{openQueues}</span>}
+                </span>
                 <span>{r.label}</span>
               </a>
             ))}

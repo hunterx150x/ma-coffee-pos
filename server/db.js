@@ -10,11 +10,11 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 export const COLLECTIONS = [
   'users', 'customers', 'categories', 'menuItems', 'toppings', 'discounts',
-  'ingredients', 'stockMoves', 'orders', 'expenses',
+  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues',
 ];
 // Collections that grow with every sale are stored one row per month in Postgres,
 // so a new sale rewrites only the current month instead of the whole history.
-const PARTITIONED = ['orders', 'stockMoves'];
+const PARTITIONED = ['orders', 'stockMoves', 'queues'];
 const SINGLE_KEYS = [...COLLECTIONS.filter((c) => !PARTITIONED.includes(c)), 'settings', 'meta'];
 
 let db = null;
@@ -31,6 +31,7 @@ function normalize(next, meta) {
   for (const c of COLLECTIONS) next[c] = Array.isArray(next[c]) ? next[c] : [];
   next.settings = { ...defaultSettings(), ...(next.settings || {}) };
   next.meta = meta || next.meta || { secret: crypto.randomBytes(32).toString('hex') };
+  migrate(next);
   return next;
 }
 
@@ -77,6 +78,19 @@ export function replaceDb(next) {
   db = normalize(next, db.meta);
   forceAll = true;
   save();
+}
+
+// One-off data upgrades for databases created by older versions.
+function migrate(d) {
+  const done = new Set(d.meta.migrations || []);
+  if (!done.has('queue-permission')) {
+    // The queue menu was added later: staff who can sell get it by default.
+    for (const u of d.users) {
+      if (u.role === 'staff' && (u.permissions || []).includes('pos') && !u.permissions.includes('queue')) u.permissions.push('queue');
+    }
+    done.add('queue-permission');
+  }
+  d.meta.migrations = [...done];
 }
 
 // ---------- persistence ----------

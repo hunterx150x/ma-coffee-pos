@@ -96,10 +96,21 @@ const bySort = (a, b) => (a.sort ?? 0) - (b.sort ?? 0) || String(a.name).localeC
 function catalog(user) {
   const db = getDb();
   const showCost = hasPerm(user, 'products') || hasPerm(user, 'reports');
+  const ing = (id) => db.ingredients.find((i) => i.id === id);
+  // Ingredient names / units resolved so every user (even without stock access) can read how to make a drink.
+  const howTo = (x) => ({
+    ingredients: (x.recipe || []).map((r) => ({ name: ing(r.ingredientId)?.name || '-', unit: ing(r.ingredientId)?.unit || '', qty: r.qty })),
+    steps: (x.steps || []).map((st) => ({
+      text: st.text,
+      ingredientName: st.ingredientId ? ing(st.ingredientId)?.name || '' : '',
+      qty: st.ingredientId ? st.qty : null,
+      unit: st.ingredientId ? ing(st.ingredientId)?.unit || '' : '',
+    })),
+  });
   const strip = (x) => {
-    if (showCost) return { ...x, unitCost: unitCost(x, db.ingredients) };
+    if (showCost) return { ...x, unitCost: unitCost(x, db.ingredients), howTo: howTo(x) };
     const { cost, recipe, costMode, ...rest } = x;
-    return rest;
+    return { ...rest, howTo: howTo(x) };
   };
   return {
     categories: [...db.categories].sort(bySort),
@@ -153,6 +164,16 @@ const cleanRecipe = (recipe) =>
     .filter((r) => r && getDb().ingredients.some((i) => i.id === r.ingredientId) && Number(r.qty) > 0)
     .map((r) => ({ ingredientId: r.ingredientId, qty: num(r.qty) }));
 
+// How-to steps: free text, optionally linked to a stock ingredient + amount (display only, stock is cut by the recipe).
+const cleanSteps = (steps) =>
+  (Array.isArray(steps) ? steps : [])
+    .map((st) => {
+      const ingredientId = st && getDb().ingredients.some((i) => i.id === st.ingredientId) ? st.ingredientId : null;
+      return { text: str(st?.text, 200), ingredientId, qty: ingredientId ? num(st.qty) : null };
+    })
+    .filter((st) => st.text || st.ingredientId)
+    .slice(0, 40);
+
 crud('categories', 'categories', 'products', (b) => ({
   name: required(str(b.name, 40), 'ชื่อประเภท'),
   icon: str(b.icon, 8) || '☕',
@@ -173,6 +194,7 @@ crud('menu-items', 'menuItems', 'products', (b) => {
     cost: num(b.cost),
     costMode: b.costMode === 'recipe' ? 'recipe' : 'manual',
     recipe: cleanRecipe(b.recipe),
+    steps: cleanSteps(b.steps),
     sort: num(b.sort),
     active: b.active !== false,
   };
@@ -347,43 +369,47 @@ function applyStock(order, sign, user) {
   }
 }
 
-app.post('/api/orders', need('pos'), h((req) => {
+const priceItems = (items) => {
   const db = getDb();
-  const body = req.body || {};
-  if (!Array.isArray(body.items) || !body.items.length) fail(400, 'ยังไม่มีรายการสินค้า');
-  if (!['cash', 'transfer'].includes(body.paymentMethod)) fail(400, 'กรุณาเลือกวิธีชำระเงิน');
-
-  const cat = { ...db, menuItems: db.menuItems, toppings: db.toppings, discounts: db.discounts, categories: db.categories, ingredients: db.ingredients };
-  let lines;
+  if (!Array.isArray(items) || !items.length) fail(400, 'ยังไม่มีรายการสินค้า');
   try {
-    lines = body.items.map((i) => priceLine(i, cat));
+    return items.map((i) => priceLine(i, db));
   } catch (e) {
-    fail(400, e.message);
+    return fail(400, e.message);
   }
+};
+
+/**
+ * Create a paid order. `customer` is { type: 'old', id } | { type: 'new', name, phone, lineId };
+ * `customerName` overrides the bill name without creating a customer record (used by queues).
+ */
+function createOrder({ items, customer: cust, customerName, paymentMethod, cashReceived: cashIn, user, extra = {} }) {
+  const db = getDb();
+  if (!['cash', 'transfer'].includes(paymentMethod)) fail(400, 'กรุณาเลือกวิธีชำระเงิน');
+  const lines = priceItems(items);
   const s = summarize(lines);
 
-  // customer
+  let cashReceived = null;
+  let change = null;
+  if (paymentMethod === 'cash') {
+    cashReceived = cashIn != null && cashIn !== '' ? num(cashIn) : s.total;
+    if (cashReceived < s.total) fail(400, 'จำนวนเงินที่รับมาน้อยกว่ายอดชำระ');
+    change = round2(cashReceived - s.total);
+  }
+
   let customer = null;
-  const customerType = body.customer?.type === 'old' ? 'old' : 'new';
-  if (customerType === 'old' && body.customer?.id) {
-    customer = db.customers.find((c) => c.id === body.customer.id) || null;
-  } else if (customerType === 'new' && str(body.customer?.name)) {
+  const customerType = cust?.type === 'old' ? 'old' : 'new';
+  if (customerType === 'old' && cust?.id) {
+    customer = db.customers.find((c) => c.id === cust.id) || null;
+  } else if (customerType === 'new' && !customerName && str(cust?.name)) {
     const t = now();
-    customer = { id: uid(), ...cleanCustomer(body.customer), visits: 0, totalSpent: 0, createdAt: t, updatedAt: t };
+    customer = { id: uid(), ...cleanCustomer(cust), visits: 0, totalSpent: 0, createdAt: t, updatedAt: t };
     db.customers.push(customer);
   }
   if (customer) {
     customer.visits = (customer.visits || 0) + 1;
     customer.totalSpent = round2((customer.totalSpent || 0) + s.total);
     customer.lastVisitAt = now();
-  }
-
-  let cashReceived = null;
-  let change = null;
-  if (body.paymentMethod === 'cash') {
-    cashReceived = body.cashReceived != null && body.cashReceived !== '' ? num(body.cashReceived) : s.total;
-    if (cashReceived < s.total) fail(400, 'จำนวนเงินที่รับมาน้อยกว่ายอดชำระ');
-    change = round2(cashReceived - s.total);
   }
 
   const today = localDate(new Date());
@@ -395,19 +421,118 @@ app.post('/api/orders', need('pos'), h((req) => {
     status: 'paid',
     customerType,
     customerId: customer?.id || null,
-    customerName: customer?.name || 'ลูกค้าทั่วไป',
+    customerName: customerName || customer?.name || 'ลูกค้าทั่วไป',
     items: lines,
     ...s,
-    paymentMethod: body.paymentMethod,
+    paymentMethod,
     cashReceived,
     change,
+    staffId: user.id,
+    staffName: user.name,
+    ...extra,
+  };
+  db.orders.push(order);
+  applyStock(order, -1, user);
+  return order;
+}
+
+app.post('/api/orders', need('pos'), h((req) => {
+  const b = req.body || {};
+  const order = createOrder({ items: b.items, customer: b.customer, paymentMethod: b.paymentMethod, cashReceived: b.cashReceived, user: req.user });
+  save();
+  return order;
+}));
+
+// ---------- queues (sell now, pay on pickup) ----------
+// status: waiting (รอทำ) -> done (ทำแล้ว) -> paid (ชำระแล้ว); or cancelled
+const QUEUE_STATUS = ['waiting', 'done', 'paid', 'cancelled'];
+const findQueue = (id) => getDb().queues.find((q) => q.id === id) || fail(404, 'ไม่พบคิว');
+
+app.get('/api/queues', anyOf('queue', 'pos'), h((req) => {
+  const range = parseRange(req.query.from, req.query.to);
+  let list = getDb().queues.filter((q) => inRange(q.createdAt, range));
+  if (QUEUE_STATUS.includes(req.query.status)) list = list.filter((q) => q.status === req.query.status);
+  return list; // stored oldest first = first come, first served
+}));
+
+// Number of open queues today, for the nav badge.
+app.get('/api/queues/open-count', anyOf('queue', 'pos'), h(() => {
+  const today = parseRange();
+  return { count: getDb().queues.filter((q) => ['waiting', 'done'].includes(q.status) && inRange(q.createdAt, today)).length };
+}));
+
+app.post('/api/queues', need('pos'), h((req) => {
+  const db = getDb();
+  const b = req.body || {};
+  const lines = priceItems(b.items);
+  const s = summarize(lines);
+  const today = localDate(new Date());
+  const queueNo = db.queues.filter((q) => localDate(q.createdAt) === today).length + 1;
+  const queue = {
+    id: uid(),
+    queueNo,
+    createdAt: now(),
+    status: 'waiting',
+    name: str(b.name, 60) || `คิว ${queueNo}`,
+    note: str(b.note, 200),
+    // Only an existing customer is linked; queue names are never saved as customers.
+    customer: b.customer?.type === 'old' && db.customers.some((c) => c.id === b.customer.id) ? { type: 'old', id: b.customer.id } : null,
+    items: b.items.map((i) => ({
+      menuItemId: i.menuItemId, sweetness: i.sweetness ?? null, toppingIds: i.toppingIds || [],
+      discountIds: i.discountIds || [], note: str(i.note, 200), qty: Math.max(1, Math.floor(Number(i.qty) || 1)),
+    })),
+    lines,
+    total: s.total,
+    cups: s.cups,
     staffId: req.user.id,
     staffName: req.user.name,
   };
-  db.orders.push(order);
-  applyStock(order, -1, req.user);
+  db.queues.push(queue);
   save();
-  return order;
+  return queue;
+}));
+
+app.post('/api/queues/:id/status', need('queue'), h((req) => {
+  const q = findQueue(req.params.id);
+  const status = req.body?.status;
+  if (!['waiting', 'done', 'cancelled'].includes(status)) fail(400, 'สถานะไม่ถูกต้อง');
+  if (q.status === 'paid') fail(400, 'คิวนี้ชำระเงินแล้ว');
+  if (q.status === 'cancelled' && status !== 'waiting') fail(400, 'คิวนี้ถูกยกเลิกแล้ว');
+  q.status = status;
+  if (status === 'done') q.doneAt = now();
+  if (status === 'cancelled') {
+    q.cancelledAt = now();
+    q.cancelledBy = req.user.name;
+    q.cancelReason = str(req.body?.reason, 200);
+  }
+  q.updatedAt = now();
+  markDirty('queues', q.createdAt);
+  save();
+  return q;
+}));
+
+app.post('/api/queues/:id/pay', need('queue'), h((req) => {
+  const q = findQueue(req.params.id);
+  if (q.status === 'paid') fail(400, 'คิวนี้ชำระเงินแล้ว');
+  if (q.status === 'cancelled') fail(400, 'คิวนี้ถูกยกเลิกแล้ว');
+  const order = createOrder({
+    items: q.items,
+    customer: q.customer,
+    customerName: q.customer ? undefined : q.name,
+    paymentMethod: req.body?.paymentMethod,
+    cashReceived: req.body?.cashReceived,
+    user: req.user,
+    extra: { queueId: q.id, queueNo: q.queueNo },
+  });
+  q.status = 'paid';
+  q.paidAt = now();
+  q.orderId = order.id;
+  q.orderNo = order.orderNo;
+  q.total = order.total;
+  q.updatedAt = now();
+  markDirty('queues', q.createdAt);
+  save();
+  return { queue: q, order };
 }));
 
 app.get('/api/orders', anyOf('orders', 'reports'), h((req) => {

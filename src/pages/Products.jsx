@@ -114,7 +114,7 @@ function MenuItems({ cats, ings }) {
           ))}
         </div>
         <button className="btn btn-primary" disabled={!cats.length}
-          onClick={() => crud.open({ categoryId: filter || cats[0]?.id, name: '', price: '', cost: '', costMode: 'manual', recipe: [], sort: 0, active: true })}>
+          onClick={() => crud.open({ categoryId: filter || cats[0]?.id, name: '', price: '', cost: '', costMode: 'manual', recipe: [], steps: [], sort: 0, active: true })}>
           <Icon name="plus" /> เพิ่มเมนู
         </button>
       </div>
@@ -128,7 +128,7 @@ function MenuItems({ cats, ings }) {
                 const cat = cats.find((c) => c.id === m.categoryId);
                 return (
                   <tr key={m.id} onClick={() => crud.open(m)} className={m.active ? '' : 'row-dim'}>
-                    <td><b>{m.name}</b><div className="muted small">{cat ? `${cat.icon} ${cat.name}` : '-'}{m.costMode === 'recipe' ? ' · ต้นทุนจากสูตร' : ''}</div></td>
+                    <td><b>{m.name}</b><div className="muted small">{cat ? `${cat.icon} ${cat.name}` : '-'}{m.costMode === 'recipe' ? ' · ต้นทุนจากสูตร' : ''}{m.steps?.length ? ` · วิธีทำ ${m.steps.length} ขั้นตอน` : ''}</div></td>
                     <td className="num">{baht(m.price)}</td>
                     <td className="num">{baht(cost)}</td>
                     <td className="num hide-sm"><Margin price={m.price} cost={cost} /></td>
@@ -161,6 +161,7 @@ function MenuItems({ cats, ings }) {
               </Field>
             </div>
             <CostEditor f={f} setF={setF} ings={ings} />
+            <StepsEditor f={f} setF={setF} ings={ings} />
             <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="เปิดขายเมนูนี้" />
           </>
         )}
@@ -226,6 +227,75 @@ function CostEditor({ f, setF, ings }) {
           <span>กำไรต่อหน่วย <b><Margin price={f.price} cost={cost} /></b></span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * How-to steps shown to baristas. Each step is free text and can optionally point at a stock
+ * ingredient + amount (e.g. "ชงกาแฟ" → เมล็ดกาแฟ 18 กรัม). Display only — stock is cut by the recipe above.
+ */
+function StepsEditor({ f, setF, ings }) {
+  const steps = f.steps || [];
+  const set = (next) => setF({ ...f, steps: next });
+  const setRow = (i, patch) => set(steps.map((st, j) => (j === i ? { ...st, ...patch } : st)));
+  const move = (i, d) => {
+    const j = i + d;
+    if (j < 0 || j >= steps.length) return;
+    const next = [...steps];
+    [next[i], next[j]] = [next[j], next[i]];
+    set(next);
+  };
+  const fromRecipe = () => set([
+    ...steps,
+    ...(f.recipe || []).map((r) => ({ text: '', ingredientId: r.ingredientId, qty: r.qty })),
+  ]);
+  return (
+    <div className="subcard">
+      <div className="subcard-head">
+        <b>วิธีทำ (ขั้นตอน)</b>
+        {(f.recipe || []).length > 0 && (
+          <button className="btn btn-sm btn-ghost" onClick={fromRecipe}><Icon name="stock" size={16} /> ดึงจากส่วนผสม</button>
+        )}
+      </div>
+      <div className="muted small">เช่น 1. ชงกาแฟ (อ้างอิง เมล็ดกาแฟ 18 กรัม) · 2. ใส่น้ำเปล่าเย็น 4 Oz. (พิมพ์เอง ไม่อ้างอิงสต๊อก)</div>
+      {steps.map((st, i) => {
+        const ing = ings.find((x) => x.id === st.ingredientId);
+        return (
+          <div key={i} className="step-row">
+            <span className="howto-num">{i + 1}</span>
+            <div className="step-row-main">
+              <input className="input" value={st.text} placeholder="รายละเอียดขั้นตอน เช่น ชงกาแฟ, ใส่น้ำแข็งเต็มแก้ว"
+                onChange={(e) => setRow(i, { text: e.target.value })} />
+              <div className="step-row-ing">
+                <select className="input" value={st.ingredientId || ''} aria-label="วัตถุดิบจากสต๊อก"
+                  onChange={(e) => {
+                    const id = e.target.value || null;
+                    const r = (f.recipe || []).find((x) => x.ingredientId === id);
+                    setRow(i, { ingredientId: id, qty: id ? (st.qty || r?.qty || '') : null });
+                  }}>
+                  <option value="">— ไม่อ้างอิงสต๊อก —</option>
+                  {ings.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+                {st.ingredientId && (
+                  <>
+                    <NumberInput value={st.qty} onChange={(v) => setRow(i, { qty: v })} aria-label="ปริมาณ" />
+                    <span className="muted small recipe-unit">{ing?.unit}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="step-row-tools">
+              <button className="icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="เลื่อนขึ้น"><Icon name="up" size={18} /></button>
+              <button className="icon-btn" onClick={() => move(i, 1)} disabled={i === steps.length - 1} aria-label="เลื่อนลง"><Icon name="down" size={18} /></button>
+              <button className="icon-btn icon-btn-danger" onClick={() => set(steps.filter((_, j) => j !== i))} aria-label="ลบขั้นตอน"><Icon name="x" size={18} /></button>
+            </div>
+          </div>
+        );
+      })}
+      <button className="btn btn-sm btn-outline align-start" onClick={() => set([...steps, { text: '', ingredientId: null, qty: null }])}>
+        <Icon name="plus" size={16} /> เพิ่มขั้นตอน
+      </button>
     </div>
   );
 }
