@@ -592,3 +592,10 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .toggle-list { display: flex; flex-direction: column; gap: 12px; }
 .line-help summary { cursor: pointer; font-weight: 500; color: var(--primary-600); }
 .line-help code { word-break: break-all; background: var(--surface-2); padding: 2px 6px; border-radius: 6px; }
+
+/* ---------- realtime indicator ---------- */
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.live.on { color: var(--good); }
+.live.on .live-dot { background: var(--good); box-shadow: 0 0 0 0 rgba(46,125,82,.5); animation: livePulse 2s infinite; }
+@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(46,125,82,.5); } 70% { box-shadow: 0 0 0 8px rgba(46,125,82,0); } 100% { box-shadow: 0 0 0 0 rgba(46,125,82,0); } }

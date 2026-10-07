@@ -8,6 +8,7 @@ import { buildReport, parseRange, inRange, localDate } from './report.js';
 import { priceLine, summarize, round2, unitCost } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import * as line from './line.js';
+import * as events from './events.js';
 
 await load();
 
@@ -119,6 +120,12 @@ app.post('/api/auth/login', h((req) => {
   user.tokenVersion = user.tokenVersion || 0;
   return { token: signToken({ uid: user.id, tv: user.tokenVersion }, getDb().meta.secret), user: publicUser(user) };
 }));
+
+// Realtime stream. EventSource cannot send headers, so the token comes in the query string.
+app.get('/api/events', (req, _res, next) => {
+  req.headers.authorization = `Bearer ${String(req.query.token || '')}`;
+  next();
+}, auth, anyOf('queue', 'pos'), (req, res) => events.subscribe(req, res));
 
 app.use('/api', auth);
 
@@ -538,6 +545,7 @@ app.post('/api/queues', need('pos'), h((req) => {
   };
   db.queues.push(queue);
   save();
+  events.broadcast('queues', { id: queue.id, status: queue.status });
   return queue;
 }));
 
@@ -557,6 +565,7 @@ app.post('/api/queues/:id/status', need('queue'), h((req) => {
   q.updatedAt = now();
   markDirty('queues', q.createdAt);
   save();
+  events.broadcast('queues', { id: q.id, status: q.status });
   return q;
 }));
 
@@ -581,6 +590,7 @@ app.post('/api/queues/:id/pay', need('queue'), h((req) => {
   q.updatedAt = now();
   markDirty('queues', q.createdAt);
   save();
+  events.broadcast('queues', { id: q.id, status: q.status });
   return { queue: q, order };
 }));
 

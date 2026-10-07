@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken } from './api.js';
 import { initial } from './utils.js';
+import { onRealtime } from './realtime.js';
 import { hasPerm, ROLES } from '../shared/permissions.js';
 import { Icon, Loading, Modal, Field, useUi } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
@@ -73,11 +74,13 @@ export default function App() {
     let alive = true;
     const load = () => api('/queues/open-count').then((r) => alive && setOpenQueues(r.count)).catch(() => {});
     load();
-    const t = setInterval(load, 15000);
+    const off = onRealtime(['queues', 'resync'], load);
+    const t = setInterval(load, 60000);
     window.addEventListener('hashchange', load);
     window.addEventListener('pos:queues-changed', load);
     return () => {
       alive = false;
+      off();
       clearInterval(t);
       window.removeEventListener('hashchange', load);
       window.removeEventListener('pos:queues-changed', load);

@@ -5,6 +5,7 @@ import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, PageHead, Tabs
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
 import HowToModal from '../components/HowTo.jsx';
+import { onRealtime, onRealtimeStatus } from '../realtime.js';
 
 const STATUS = {
   waiting: { label: 'รอทำ', cls: 'badge-warn' },
@@ -20,7 +21,7 @@ const FILTERS = [
   { key: 'cancelled', label: 'ยกเลิก', match: (q) => q.status === 'cancelled' },
   { key: 'all', label: 'ทั้งหมด', match: () => true },
 ];
-const POLL_MS = 10000;
+const FALLBACK_POLL_MS = 60000;
 
 export default function Queue() {
   const { toast, confirm } = useUi();
@@ -41,14 +42,21 @@ export default function Queue() {
   const [reason, setReason] = useState('');
   const [howToLine, setHowToLine] = useState(null);
 
-  // Other devices add / update queues: refresh regularly so every user sees the same list.
+  const [live, setLive] = useState(false);
+
+  // Realtime: reload as soon as any device changes a queue; slow polling stays as a safety net.
   useEffect(() => {
-    const t = setInterval(() => {
-      list.reload();
-      setNowTs(Date.now());
-    }, POLL_MS);
-    return () => clearInterval(t);
+    const offEvents = onRealtime(['queues', 'resync'], () => list.reload());
+    const offStatus = onRealtimeStatus(setLive);
+    const poll = setInterval(() => list.reload(), FALLBACK_POLL_MS);
+    return () => { offEvents(); offStatus(); clearInterval(poll); };
   }, [range.from, range.to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keeps the "waiting N minutes" labels fresh.
+  useEffect(() => {
+    const t = setInterval(() => setNowTs(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const all = list.data || [];
   const f = FILTERS.find((x) => x.key === filter);
@@ -84,7 +92,11 @@ export default function Queue() {
 
   return (
     <div>
-      <PageHead title="คิว" sub={`ยังไม่ชำระ ${all.filter(FILTERS[0].match).length} คิว · ${baht(openTotal)} · มาก่อนได้ก่อน`} />
+      <PageHead title="คิว" sub={`ยังไม่ชำระ ${all.filter(FILTERS[0].match).length} คิว · ${baht(openTotal)} · มาก่อนได้ก่อน`}>
+        <span className={`live ${live ? 'on' : ''}`} title={live ? 'อัปเดตอัตโนมัติทันทีเมื่อมีการเปลี่ยนแปลง' : 'กำลังเชื่อมต่อใหม่...'}>
+          <span className="live-dot" /> {live ? 'Realtime' : 'กำลังเชื่อมต่อ...'}
+        </span>
+      </PageHead>
       <div className="card filters">
         <DateRange value={range} onChange={setRange} />
         <div className="filters-row">
