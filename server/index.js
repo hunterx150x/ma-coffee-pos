@@ -1,5 +1,4 @@
-process.env.TZ = process.env.TZ || 'Asia/Bangkok';
-
+import './env.js';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -8,11 +7,56 @@ import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js'
 import { buildReport, parseRange, inRange, localDate } from './report.js';
 import { priceLine, summarize, round2, unitCost } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
+import * as line from './line.js';
 
 await load();
 
 const app = express();
 app.set('trust proxy', 1);
+
+// ---------- LINE ----------
+const lineGroupId = () => getDb().settings.line?.groupId || process.env.LINE_GROUP_ID || '';
+const lineOn = (kind) => line.lineConfigured() && lineGroupId() && getDb().settings.line?.[kind] !== false;
+const todayTotals = () => buildReport(getDb(), parseRange()).totals;
+const lowStockList = () => getDb().ingredients.filter((i) => i.minQty > 0 && i.quantity <= i.minQty);
+
+function notifySale(order, crossedLow) {
+  if (lineOn('sale')) line.pushQuiet(lineGroupId(), [line.saleFlex(order, todayTotals(), getDb().settings.shopName)]);
+  if (crossedLow.length && lineOn('lowStock')) line.pushQuiet(lineGroupId(), [line.lowStockFlex(crossedLow)]);
+}
+
+// Webhook needs the raw body to check LINE's signature, so it is registered before the JSON parser.
+app.post('/api/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
+  if (!line.verifySignature(req.body, req.headers['x-line-signature'])) return res.status(401).end();
+  res.status(200).end();
+  let events = [];
+  try { events = JSON.parse(req.body.toString('utf8')).events || []; } catch { return; }
+  const db = getDb();
+  for (const ev of events) {
+    const groupId = ev.source?.groupId;
+    if (!groupId) continue;
+    // Remember groups the bot was added to, so the owner can pick one in Settings.
+    db.meta.lineGroups = db.meta.lineGroups || [];
+    let g = db.meta.lineGroups.find((x) => x.groupId === groupId);
+    if (!g) {
+      g = { groupId, name: '', seenAt: now() };
+      db.meta.lineGroups.push(g);
+      line.groupSummary(groupId).then((r) => { g.name = r.groupName || ''; save(); }).catch(() => {});
+    }
+    g.seenAt = now();
+    save();
+    // Commands only answer in the shop's own group (replies are free, no quota used).
+    const text = ev.type === 'message' && ev.message?.type === 'text' ? ev.message.text.trim() : '';
+    if (!text || groupId !== lineGroupId() || !ev.replyToken) continue;
+    if (/^(ยอด|ยอดวันนี้|สรุป|สรุปยอด)$/.test(text)) {
+      line.reply(ev.replyToken, [line.summaryFlex(buildReport(db, parseRange()), db.settings.shopName)]).catch((e) => console.error(e.message));
+    } else if (/^(สต๊อก|สต็อก|stock)$/i.test(text)) {
+      const low = lowStockList();
+      line.reply(ev.replyToken, [low.length ? line.lowStockFlex(low) : { type: 'text', text: '✅ วัตถุดิบเพียงพอทุกรายการ' }]).catch((e) => console.error(e.message));
+    }
+  }
+});
+
 app.use(express.json({ limit: '20mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -360,13 +404,17 @@ function applyStock(order, sign, user) {
     addRecipe(db.menuItems.find((m) => m.id === l.menuItemId)?.recipe, l.qty);
     for (const t of l.toppings) addRecipe(db.toppings.find((x) => x.id === t.id)?.recipe, l.qty);
   }
+  const crossedLow = [];
   for (const [ingredientId, qty] of need) {
     const ing = db.ingredients.find((i) => i.id === ingredientId);
     if (!ing) continue;
+    const before = ing.quantity;
     ing.quantity = round2(ing.quantity + sign * qty);
+    if (ing.minQty > 0 && before > ing.minQty && ing.quantity <= ing.minQty) crossedLow.push(ing);
     ing.updatedAt = now();
     addMove(ing, sign < 0 ? 'sale' : 'void', sign * qty, `บิล ${order.orderNo}`, user, { orderId: order.id });
   }
+  return crossedLow;
 }
 
 const priceItems = (items) => {
@@ -432,7 +480,8 @@ function createOrder({ items, customer: cust, customerName, paymentMethod, cashR
     ...extra,
   };
   db.orders.push(order);
-  applyStock(order, -1, user);
+  const crossedLow = applyStock(order, -1, user);
+  notifySale(order, crossedLow);
   return order;
 }
 
@@ -568,6 +617,7 @@ app.post('/api/orders/:id/void', h((req) => {
   }
   applyStock(o, +1, req.user);
   save();
+  if (lineOn('void')) line.pushQuiet(lineGroupId(), [line.voidFlex(o, todayTotals())]);
   return o;
 }));
 
@@ -644,6 +694,15 @@ app.put('/api/settings', need('settings'), h((req) => {
   if (b.phone !== undefined) s.phone = str(b.phone, 30);
   if (b.promptPayId !== undefined) s.promptPayId = str(b.promptPayId, 20).replace(/[^0-9]/g, '');
   if (b.receiptFooter !== undefined) s.receiptFooter = str(b.receiptFooter, 200);
+  if (b.line && typeof b.line === 'object') {
+    const cur = s.line || {};
+    s.line = {
+      groupId: b.line.groupId !== undefined ? str(b.line.groupId, 40).replace(/[^A-Za-z0-9]/g, '') : cur.groupId || '',
+      sale: b.line.sale !== undefined ? !!b.line.sale : cur.sale !== false,
+      void: b.line.void !== undefined ? !!b.line.void : cur.void !== false,
+      lowStock: b.line.lowStock !== undefined ? !!b.line.lowStock : cur.lowStock !== false,
+    };
+  }
   if (Array.isArray(b.sweetnessLevels)) {
     const lv = [...new Set(b.sweetnessLevels.map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n <= 200))].sort((a, b2) => a - b2);
     if (lv.length) s.sweetnessLevels = lv;
@@ -651,6 +710,33 @@ app.put('/api/settings', need('settings'), h((req) => {
   save();
   return s;
 }));
+
+app.get('/api/line/status', need('settings'), h(() => ({
+  configured: line.lineConfigured(),
+  groupId: lineGroupId(),
+  envGroupId: process.env.LINE_GROUP_ID || '',
+  groups: getDb().meta.lineGroups || [],
+  webhookPath: '/api/line/webhook',
+  ...line.lineState,
+})));
+
+const lineSend = async (messages) => {
+  if (!line.lineConfigured()) fail(400, 'ยังไม่ได้ตั้งค่า LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET บนเซิร์ฟเวอร์');
+  if (!lineGroupId()) fail(400, 'ยังไม่ได้ระบุ Group ID');
+  try {
+    await line.push(lineGroupId(), messages);
+  } catch (e) {
+    fail(502, e.message);
+  }
+  return { ok: true };
+};
+// Async handlers: errors are passed to the error middleware explicitly.
+app.post('/api/line/test', need('settings'), (req, res, next) => {
+  lineSend([{ type: 'text', text: `✅ ทดสอบการแจ้งเตือนจาก ${getDb().settings.shopName} โดย ${req.user.name}` }]).then((r) => res.json(r), next);
+});
+app.post('/api/line/summary', need('reports'), (req, res, next) => {
+  lineSend([line.summaryFlex(buildReport(getDb(), parseRange()), getDb().settings.shopName)]).then((r) => res.json(r), next);
+});
 
 app.get('/api/backup', ownerOnly, h((_req, res) => {
   const { meta, ...data } = getDb();

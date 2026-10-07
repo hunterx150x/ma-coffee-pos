@@ -180,6 +180,7 @@ function defaultSettings() {
     promptPayId: '',
     receiptFooter: 'ขอบคุณที่อุดหนุนค่ะ ☕',
     sweetnessLevels: [25, 50, 75, 100],
+    line: { groupId: '', sale: true, void: true, lowStock: true },
     lowStockAlert: true,
   };
 }

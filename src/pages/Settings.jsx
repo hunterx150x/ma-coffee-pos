@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { api, getToken } from '../api.js';
 import { useAuth } from '../App.jsx';
 import { today } from '../utils.js';
-import { Field, Icon, Loading, PageHead, useAsync, useUi } from '../components/ui.jsx';
+import { Field, Icon, Loading, PageHead, Toggle, useAsync, useUi } from '../components/ui.jsx';
+import { thDateTime } from '../utils.js';
 
 export default function Settings() {
   const { user } = useAuth();
   const { toast, confirm } = useUi();
   const s = useAsync(() => api('/settings'), []);
+  const lineStatus = useAsync(() => api('/line/status'), []);
   const [f, setF] = useState(null);
   const [levels, setLevels] = useState('');
   const fileRef = useRef(null);
@@ -20,11 +22,14 @@ export default function Settings() {
   }, [s.data]);
 
   if (!f) return <Loading />;
+  const ln = { groupId: '', sale: true, void: true, lowStock: true, ...(f.line || {}) };
+  const setLine = (patch) => setF({ ...f, line: { ...ln, ...patch } });
 
   const save = async () => {
     try {
       const sweetnessLevels = levels.split(/[,\s]+/).map(Number).filter((n) => Number.isFinite(n));
       const r = await api('/settings', { method: 'PUT', body: { ...f, sweetnessLevels } });
+      lineStatus.reload();
       s.setData(r);
       toast('บันทึกการตั้งค่าแล้ว');
     } catch (e) {
@@ -77,6 +82,7 @@ export default function Settings() {
             <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
           </Field>
         </div>
+        <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />
         {user.role === 'owner' && (
           <div className="card form">
             <h3 className="card-title">สำรอง / กู้คืนข้อมูล</h3>
@@ -89,6 +95,66 @@ export default function Settings() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function LineCard({ ln, setLine, status, onSaveFirst }) {
+  const { toast } = useUi();
+  const [busy, setBusy] = useState('');
+  const st = status.data;
+  const webhookUrl = `${window.location.origin}/api/line/webhook`;
+  const send = async (path, ok) => {
+    setBusy(path);
+    try {
+      await onSaveFirst();
+      await api(path, { method: 'POST' });
+      toast(ok);
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy('');
+      status.reload();
+    }
+  };
+  return (
+    <div className="card form">
+      <h3 className="card-title">แจ้งเตือน LINE (กลุ่มของร้าน)</h3>
+      {st && (
+        <div className={`line-status ${st.configured ? 'ok' : 'off'}`}>
+          <Icon name={st.configured ? 'check' : 'alert'} size={16} />
+          {st.configured ? 'เชื่อมต่อ LINE Official Account แล้ว' : 'ยังไม่ได้ตั้งค่า token บนเซิร์ฟเวอร์ (LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET)'}
+        </div>
+      )}
+      <Field label="Group ID ที่จะส่งแจ้งเตือน" hint={st?.envGroupId && !ln.groupId ? `ถ้าเว้นว่างจะใช้ค่าจากเซิร์ฟเวอร์: ${st.envGroupId}` : 'ขึ้นต้นด้วย C'}>
+        <input className="input" value={ln.groupId} placeholder={st?.envGroupId || 'Cxxxxxxxx...'} onChange={(e) => setLine({ groupId: e.target.value.trim() })} />
+      </Field>
+      {st?.groups?.length > 0 && (
+        <div className="chips">
+          {st.groups.map((g) => (
+            <button key={g.groupId} className={`chip ${(ln.groupId || st.envGroupId) === g.groupId ? 'active' : ''}`} onClick={() => setLine({ groupId: g.groupId })}>
+              {g.name || g.groupId.slice(0, 10) + '…'}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="toggle-list">
+        <Toggle checked={ln.sale} onChange={(v) => setLine({ sale: v })} label="แจ้งทุกครั้งที่ขาย (รายละเอียดบิล + ยอดขายวันนี้)" />
+        <Toggle checked={ln.void} onChange={(v) => setLine({ void: v })} label="แจ้งเมื่อยกเลิกบิล" />
+        <Toggle checked={ln.lowStock} onChange={(v) => setLine({ lowStock: v })} label="แจ้งเมื่อวัตถุดิบลดลงถึงจุดขั้นต่ำ" />
+      </div>
+      <div className="form-actions form-actions-left">
+        <button className="btn btn-outline" disabled={!!busy} onClick={() => send('/line/test', 'ส่งข้อความทดสอบแล้ว')}><Icon name="check" /> ส่งข้อความทดสอบ</button>
+        <button className="btn btn-outline" disabled={!!busy} onClick={() => send('/line/summary', 'ส่งสรุปยอดวันนี้แล้ว')}><Icon name="reports" /> ส่งสรุปยอดวันนี้</button>
+      </div>
+      {st?.lastError && <div className="field-error">ส่งล่าสุดไม่สำเร็จ: {st.lastError}</div>}
+      {st?.lastSentAt && <div className="muted small">ส่งสำเร็จล่าสุด {thDateTime(st.lastSentAt)}</div>}
+      <details className="line-help">
+        <summary>Webhook และคำสั่งในกลุ่ม</summary>
+        <p className="small">ตั้ง Webhook URL ใน LINE Developers → Messaging API เป็น<br /><code>{webhookUrl}</code><br />แล้วเปิด “Use webhook” — ระบบจะจำกลุ่มที่เชิญ OA เข้าไปให้เลือกด้านบน</p>
+        <p className="small">พิมพ์ในกลุ่มของร้าน (ตอบกลับฟรี ไม่ใช้โควตา): <b>ยอดวันนี้</b> = สรุปยอดขาย · <b>สต๊อก</b> = วัตถุดิบใกล้หมด</p>
+        <p className="small muted">หมายเหตุ: ข้อความที่ส่งเข้ากลุ่มนับโควตาตามจำนวนสมาชิกในกลุ่ม ถ้าโควตาไม่พอให้ปิด “แจ้งทุกครั้งที่ขาย” แล้วใช้คำสั่ง “ยอดวันนี้” แทน</p>
+      </details>
     </div>
   );
 }

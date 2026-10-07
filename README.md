@@ -46,6 +46,18 @@ npm start         # เปิดระบบที่ http://localhost:3001
 **ข้อจำกัดของแพ็กเกจฟรี:** Render จะหลับเมื่อไม่มีคนใช้ 15 นาที และเปิดครั้งแรกหลังหลับจะช้า ~1 นาที
 แก้ได้โดยตั้ง https://uptimerobot.com (ฟรี) ให้เรียก `https://<ลิงก์ของคุณ>/api/health` ทุก 5 นาที
 
+## แจ้งเตือน LINE (ไม่บังคับ)
+
+ตั้ง env บนเซิร์ฟเวอร์ (ใน Render → Environment หรือไฟล์ `.env` ตอนรันในเครื่อง — ห้าม commit):
+
+| ตัวแปร | ได้จาก |
+|---|---|
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers → Channel → Messaging API → Channel access token (long-lived) |
+| `LINE_CHANNEL_SECRET` | LINE Developers → Channel → Basic settings → Channel secret |
+| `LINE_GROUP_ID` | Group ID ของกลุ่มร้าน (หรือเลือกในหน้า “ตั้งค่าร้าน” หลังตั้ง webhook) |
+
+Webhook URL: `https://<โดเมน>/api/line/webhook` — คำสั่งในกลุ่ม: `ยอดวันนี้`, `สต๊อก`
+
 ## ฟีเจอร์
 
 - **ขายหน้าร้าน 8 ขั้นตอน**: ลูกค้าใหม่/เก่า → ประเภท → เมนู → ความหวาน → ท็อปปิ้ง → ส่วนลด → สรุปรายการ (เพิ่มเมนู / ยืนยัน) → ชำระเงิน (เงินสดพร้อมคำนวณเงินทอน / เงินโอนพร้อม QR พร้อมเพย์)
