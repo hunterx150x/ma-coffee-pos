@@ -5,10 +5,11 @@ export const VENDOR = {
   tagline: 'ระบบขายหน้าร้านสำหรับร้านกาแฟและเครื่องดื่ม',
   trialDays: 30,
   contact: {
-    name: '',
-    phone: '',
-    line: '', // https://line.me/ti/p/~yourid หรือ https://lin.ee/xxxx
-    email: '',
+    name: 'VibeBank soft',
+    phone: '098-817-8118',
+    line: 'https://line.me/ti/p/~bank32272', // LINE ID: bank32272
+    lineId: 'bank32272',
+    email: 'hunterx150@gmail.com',
     facebook: '',
   },
   setupFee: 3000,

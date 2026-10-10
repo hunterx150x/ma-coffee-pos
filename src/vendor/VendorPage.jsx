@@ -18,7 +18,7 @@ const nf = new Intl.NumberFormat('th-TH');
 export default function VendorPage() {
   const c = VENDOR.contact;
   const contacts = [
-    c.line && { key: 'line', label: 'ทัก LINE', href: c.line, color: '#06C755' },
+    c.line && { key: 'line', label: c.lineId ? `LINE: ${c.lineId}` : 'ทัก LINE', href: c.line, color: '#06C755' },
     c.phone && { key: 'phone', label: `โทร ${c.phone}`, href: `tel:${c.phone.replace(/[^0-9+]/g, '')}`, color: '#6f4e37' },
     c.facebook && { key: 'facebook', label: 'Facebook', href: c.facebook, color: '#1877F2' },
   ].filter(Boolean);
@@ -69,6 +69,7 @@ export default function VendorPage() {
 
       <section className="vd-sec" id="trial">
         <h2>ขอทดลองใช้ฟรี</h2>
+        {c.name && <p className="vd-by">ติดต่อ <b>{c.name}</b> ได้เลย หรือกรอกแบบฟอร์มด้านล่างแล้วเราจะติดต่อกลับ</p>}
         {contacts.length > 0 && (
           <div className="vd-contacts">
             {contacts.map((x) => (
@@ -81,7 +82,7 @@ export default function VendorPage() {
         )}
         <TrialForm />
       </section>
-      <footer className="vd-foot">{VENDOR.productName}{c.name ? ` · ติดต่อ ${c.name}` : ''}</footer>
+      <footer className="vd-foot">{VENDOR.productName}{c.name ? ` · พัฒนาและดูแลโดย ${c.name}` : ''}</footer>
     </div>
   );
 }

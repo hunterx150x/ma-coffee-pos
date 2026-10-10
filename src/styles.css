@@ -840,3 +840,4 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .vd-consent input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--primary); flex-shrink: 0; }
 .vd-done { display: flex; gap: 10px; align-items: center; padding: 18px; border-radius: 16px; background: var(--good-50); color: var(--good); font-weight: 500; }
 .vd-foot { text-align: center; color: var(--muted); font-size: 12.5px; padding-top: 24px; }
+.vd-by { text-align: center; color: var(--ink-2); margin: -4px 0 14px; }
