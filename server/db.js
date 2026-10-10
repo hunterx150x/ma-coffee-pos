@@ -92,6 +92,11 @@ function migrate(d) {
     }
     done.add('queue-permission');
   }
+  if (!done.has('outside-cats-toppings-v1')) {
+    // Same counter / outside split for categories and toppings, starting from their current state.
+    for (const x of [...d.categories, ...d.toppings]) if (x.activeOutside === undefined) x.activeOutside = x.active !== false;
+    done.add('outside-cats-toppings-v1');
+  }
   if (!done.has('menu-outside-v1')) {
     // Separate on/off for selling outside / QR self-order; start from each menu's current state.
     for (const m of d.menuItems) if (m.activeOutside === undefined) m.activeOutside = m.active !== false;

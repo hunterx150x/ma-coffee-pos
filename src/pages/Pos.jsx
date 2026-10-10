@@ -59,9 +59,9 @@ export default function Pos({ go }) {
     return {
       ...d,
       loyalty: d.settings.loyalty, // priceLine needs the free-cup cap
-      activeCategories: d.categories.filter((c) => c.active),
+      activeCategories: d.categories.filter((c) => (sellMode === 'outside' ? c.activeOutside !== false : c.active)),
       activeItems: d.menuItems.filter((m) => (sellMode === 'outside' ? m.activeOutside !== false : m.active)),
-      activeToppings: d.toppings.filter((t) => t.active),
+      activeToppings: d.toppings.filter((t) => (sellMode === 'outside' ? t.activeOutside !== false : t.active)),
       activeDiscounts: d.discounts.filter((x) => x.active),
     };
   }, [cat.data, sellMode]);

@@ -138,7 +138,8 @@ const selfOrderOpen = () => getDb().settings.selfOrder?.enabled !== false;
 
 app.get('/api/public/menu', h(() => {
   const db = getDb();
-  const cats = db.categories.filter((c) => c.active).sort(bySort);
+  // The customer QR menu follows the "sell outside" switches of categories, menus and toppings.
+  const cats = db.categories.filter((c) => c.activeOutside !== false).sort(bySort);
   const catIds = new Set(cats.map((c) => c.id));
   return {
     shop: { name: db.settings.shopName, phone: db.settings.phone },
@@ -150,7 +151,7 @@ app.get('/api/public/menu', h(() => {
     // The customer QR menu follows the "sell outside" switch, not the counter switch.
     menuItems: db.menuItems.filter((m) => m.activeOutside !== false && catIds.has(m.categoryId)).sort(bySort)
       .map((m) => ({ id: m.id, categoryId: m.categoryId, name: m.name, price: m.price, imageUrl: imageUrl(m) })),
-    toppings: db.toppings.filter((t) => t.active).sort(bySort).map(({ id, name, price }) => ({ id, name, price })),
+    toppings: db.toppings.filter((t) => t.activeOutside !== false).sort(bySort).map(({ id, name, price }) => ({ id, name, price })),
   };
 }));
 
@@ -167,8 +168,9 @@ app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
   if (!Array.isArray(b.items) || !b.items.length) fail(400, 'ยังไม่ได้เลือกเมนู');
   if (b.items.length > 20 || b.items.some((i) => Number(i.qty) > 20)) fail(400, 'รายการเยอะเกินไป กรุณาสั่งที่หน้าร้าน');
   const db = getDb();
-  const activeItem = (id) => db.menuItems.some((m) => m.id === id && m.activeOutside !== false);
-  const activeTop = (id) => db.toppings.some((t) => t.id === id && t.active);
+  const activeTop = (id) => db.toppings.some((t) => t.id === id && t.activeOutside !== false);
+  const outsideCats = new Set(db.categories.filter((c) => c.activeOutside !== false).map((c) => c.id));
+  const activeItem = (id) => db.menuItems.some((m) => m.id === id && m.activeOutside !== false && outsideCats.has(m.categoryId));
   if (!b.items.every((i) => activeItem(i.menuItemId))) fail(400, 'มีเมนูที่ไม่เปิดขายแล้ว กรุณาเลือกใหม่');
 
   const ip = req.ip;
@@ -404,6 +406,7 @@ crud('categories', 'categories', 'products', (b) => ({
   icon: str(b.icon, 8) || '☕',
   sort: num(b.sort),
   active: b.active !== false,
+  activeOutside: b.activeOutside !== false,
 }), {
   canDelete: (c) => {
     if (getDb().menuItems.some((m) => m.categoryId === c.id)) fail(400, 'ยังมีเมนูอยู่ในประเภทนี้ กรุณาย้ายหรือลบเมนูก่อน');
@@ -447,6 +450,7 @@ crud('toppings', 'toppings', 'products', (b) => ({
   recipe: cleanRecipe(b.recipe),
   sort: num(b.sort),
   active: b.active !== false,
+  activeOutside: b.activeOutside !== false,
 }));
 
 crud('discounts', 'discounts', 'products', (b) => ({

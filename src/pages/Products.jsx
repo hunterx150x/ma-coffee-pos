@@ -320,17 +320,23 @@ function Categories({ onChange }) {
     <>
       <div className="toolbar">
         <span className="muted">ประเภทที่แสดงในขั้นตอนที่ 2 ของการขาย</span>
-        <button className="btn btn-primary" onClick={() => crud.open({ name: '', icon: '☕', sort: rows.length + 1, active: true })}>
+        <button className="btn btn-primary" onClick={() => crud.open({ name: '', icon: '☕', sort: rows.length + 1, active: true, activeOutside: true })}>
           <Icon name="plus" /> เพิ่มประเภท
         </button>
       </div>
       <div className="grid grid-cats">
         {rows.map((c) => (
-          <button key={c.id} className={`tile tile-cat ${c.active ? '' : 'tile-off'}`} onClick={() => crud.open(c)}>
-            <span className="tile-emoji">{c.icon}</span>
-            <span className="tile-name">{c.name}</span>
-            <span className="muted small">{c.active ? `ลำดับ ${c.sort}` : 'ปิดใช้งาน'}</span>
-          </button>
+          <div key={c.id} className={`tile tile-cat cat-card ${c.active || c.activeOutside !== false ? '' : 'tile-off'}`}>
+            <button className="cat-open" onClick={() => crud.open(c)}>
+              <span className="tile-emoji">{c.icon}</span>
+              <span className="tile-name">{c.name}</span>
+              <span className="muted small">ลำดับ {c.sort}</span>
+            </button>
+            <div className="cat-switches">
+              <Toggle checked={c.active} onChange={(v) => crud.toggleActive(c, v)} label="หน้าร้าน" />
+              <Toggle checked={c.activeOutside !== false} onChange={(v) => crud.toggleActive(c, v, 'activeOutside')} label="นอกสถานที่ / QR" />
+            </div>
+          </div>
         ))}
       </div>
       <EditorModal crud={crud} title={f?.id ? 'แก้ไขประเภท' : 'เพิ่มประเภท'} onSubmit={() => crud.save(f)}>
@@ -346,7 +352,10 @@ function Categories({ onChange }) {
                 <button key={e} className={`chip ${f.icon === e ? 'active' : ''}`} onClick={() => setF({ ...f, icon: e })}>{e}</button>
               ))}
             </div>
-            <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="เปิดใช้งาน" />
+            <div className="toggle-list">
+              <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
+              <Toggle checked={f.activeOutside !== false} onChange={(v) => setF({ ...f, activeOutside: v })} label="ขายนอกสถานที่ / ลูกค้าสแกน QR สั่งเอง" />
+            </div>
           </>
         )}
       </EditorModal>
@@ -365,24 +374,25 @@ function Toppings({ ings }) {
     <>
       <div className="toolbar">
         <span className="muted">ตัวเลือกเพิ่มเติมในขั้นตอนที่ 5</span>
-        <button className="btn btn-primary" onClick={() => crud.open({ name: '', price: '', cost: '', costMode: 'manual', recipe: [], sort: rows.length + 1, active: true })}>
+        <button className="btn btn-primary" onClick={() => crud.open({ name: '', price: '', cost: '', costMode: 'manual', recipe: [], sort: rows.length + 1, active: true, activeOutside: true })}>
           <Icon name="plus" /> เพิ่มท็อปปิ้ง
         </button>
       </div>
       {rows.length ? (
         <div className="card table-card">
           <table className="table table-rows-click">
-            <thead><tr><th>ท็อปปิ้ง</th><th className="num">ราคา</th><th className="num">ต้นทุน</th><th className="num hide-sm">กำไร</th><th>ใช้งาน</th></tr></thead>
+            <thead><tr><th>ท็อปปิ้ง</th><th className="num">ราคา</th><th className="num">ต้นทุน</th><th className="num hide-sm">กำไร</th><th className="th-sell"><span className="hide-sm">ขาย</span>หน้าร้าน</th><th className="th-sell">นอกสถานที่<span className="hide-sm"> / QR</span></th></tr></thead>
             <tbody>
               {rows.map((t) => {
                 const cost = costOf(t, ings);
                 return (
-                  <tr key={t.id} onClick={() => crud.open(t)} className={t.active ? '' : 'row-dim'}>
+                  <tr key={t.id} onClick={() => crud.open(t)} className={t.active || t.activeOutside !== false ? '' : 'row-dim'}>
                     <td><b>{t.name}</b></td>
                     <td className="num">+{baht(t.price)}</td>
                     <td className="num">{baht(cost)}</td>
                     <td className="num hide-sm"><Margin price={t.price} cost={cost} /></td>
                     <td onClick={(e) => e.stopPropagation()}><Toggle checked={t.active} onChange={(v) => crud.toggleActive(t, v)} /></td>
+                    <td onClick={(e) => e.stopPropagation()}><Toggle checked={t.activeOutside !== false} onChange={(v) => crud.toggleActive(t, v, 'activeOutside')} /></td>
                   </tr>
                 );
               })}
@@ -399,7 +409,10 @@ function Toppings({ ings }) {
               <Field label="ลำดับการแสดง"><NumberInput value={f.sort} onChange={(v) => setF({ ...f, sort: v })} step="1" /></Field>
             </div>
             <CostEditor f={f} setF={setF} ings={ings} />
-            <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="เปิดใช้งาน" />
+            <div className="toggle-list">
+              <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
+              <Toggle checked={f.activeOutside !== false} onChange={(v) => setF({ ...f, activeOutside: v })} label="ขายนอกสถานที่ / ลูกค้าสแกน QR สั่งเอง" />
+            </div>
           </>
         )}
       </EditorModal>
