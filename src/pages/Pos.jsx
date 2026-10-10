@@ -11,6 +11,7 @@ import StampCard from '../components/StampCard.jsx';
 
 const STEPS = ['ลูกค้า', 'ประเภท', 'เมนู', 'ความหวาน', 'ท็อปปิ้ง', 'ส่วนลด', 'สรุปรายการ', 'ชำระเงิน'];
 const CART_KEY = 'ma_pos_cart';
+const SELL_MODE_KEY = 'ma_pos_sell_mode';
 
 const emptyDraft = () => ({ categoryId: null, menuItemId: null, sweetness: null, toppingIds: [], discountIds: [], note: '', qty: 1, rewardQty: 0, editIndex: null });
 const emptyCustomer = () => ({ type: null, id: null, name: '', phone: '', lineId: '' });
@@ -27,6 +28,14 @@ export default function Pos({ go }) {
   const { toast, confirm } = useUi();
   const cat = useAsync(() => api('/catalog'), []);
   const saved = useMemo(loadSaved, []);
+  // Where we are selling decides which menus show: the counter switch or the "sell outside" switch.
+  const [sellMode, setSellMode] = useState(() => {
+    try { return localStorage.getItem(SELL_MODE_KEY) === 'outside' ? 'outside' : 'counter'; } catch { return 'counter'; }
+  });
+  const changeSellMode = (m) => {
+    setSellMode(m);
+    try { localStorage.setItem(SELL_MODE_KEY, m); } catch { /* storage unavailable */ }
+  };
   const [step, setStep] = useState(saved?.step && saved.cart.length ? Math.min(saved.step, 7) : 1);
   const [customer, setCustomer] = useState(saved?.customer || emptyCustomer());
   const [cart, setCart] = useState(saved?.cart || []);
@@ -51,11 +60,11 @@ export default function Pos({ go }) {
       ...d,
       loyalty: d.settings.loyalty, // priceLine needs the free-cup cap
       activeCategories: d.categories.filter((c) => c.active),
-      activeItems: d.menuItems.filter((m) => m.active),
+      activeItems: d.menuItems.filter((m) => (sellMode === 'outside' ? m.activeOutside !== false : m.active)),
       activeToppings: d.toppings.filter((t) => t.active),
       activeDiscounts: d.discounts.filter((x) => x.active),
     };
-  }, [cat.data]);
+  }, [cat.data, sellMode]);
 
   // Price every cart line against the current catalog; drop lines whose menu was removed.
   const lines = useMemo(() => {
@@ -177,6 +186,10 @@ export default function Pos({ go }) {
             <button className="btn btn-ghost" onClick={back}><Icon name="back" /> ย้อนกลับ</button>
           ) : <span />}
           <div className="pos-toolbar-right">
+            <div className="type-switch sell-mode" role="group" aria-label="ขายที่">
+              <button className={sellMode === 'counter' ? 'active' : ''} onClick={() => changeSellMode('counter')}>หน้าร้าน</button>
+              <button className={sellMode === 'outside' ? 'active' : ''} onClick={() => changeSellMode('outside')}>นอกสถานที่</button>
+            </div>
             {customer.type && (
               <span className="pill pill-customer">
                 <Icon name="user" size={14} /> {customer.type === 'old' ? customer.name : (customer.name || 'ลูกค้าใหม่')}

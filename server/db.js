@@ -92,6 +92,11 @@ function migrate(d) {
     }
     done.add('queue-permission');
   }
+  if (!done.has('menu-outside-v1')) {
+    // Separate on/off for selling outside / QR self-order; start from each menu's current state.
+    for (const m of d.menuItems) if (m.activeOutside === undefined) m.activeOutside = m.active !== false;
+    done.add('menu-outside-v1');
+  }
   if (!done.has('loyalty-v1')) {
     // Snacks don't earn stamps; the old manual "LINE points" discount is replaced by the stamp card.
     d.settings.loyalty = {

@@ -147,7 +147,8 @@ app.get('/api/public/menu', h(() => {
     loyalty: db.settings.loyalty?.enabled ? { cupsPerReward: db.settings.loyalty.cupsPerReward, rewardMaxValue: db.settings.loyalty.rewardMaxValue } : null,
     sweetnessLevels: db.settings.sweetnessLevels,
     categories: cats.map(({ id, name, icon }) => ({ id, name, icon })),
-    menuItems: db.menuItems.filter((m) => m.active && catIds.has(m.categoryId)).sort(bySort)
+    // The customer QR menu follows the "sell outside" switch, not the counter switch.
+    menuItems: db.menuItems.filter((m) => m.activeOutside !== false && catIds.has(m.categoryId)).sort(bySort)
       .map((m) => ({ id: m.id, categoryId: m.categoryId, name: m.name, price: m.price, imageUrl: imageUrl(m) })),
     toppings: db.toppings.filter((t) => t.active).sort(bySort).map(({ id, name, price }) => ({ id, name, price })),
   };
@@ -166,7 +167,7 @@ app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
   if (!Array.isArray(b.items) || !b.items.length) fail(400, 'ยังไม่ได้เลือกเมนู');
   if (b.items.length > 20 || b.items.some((i) => Number(i.qty) > 20)) fail(400, 'รายการเยอะเกินไป กรุณาสั่งที่หน้าร้าน');
   const db = getDb();
-  const activeItem = (id) => db.menuItems.some((m) => m.id === id && m.active);
+  const activeItem = (id) => db.menuItems.some((m) => m.id === id && m.activeOutside !== false);
   const activeTop = (id) => db.toppings.some((t) => t.id === id && t.active);
   if (!b.items.every((i) => activeItem(i.menuItemId))) fail(400, 'มีเมนูที่ไม่เปิดขายแล้ว กรุณาเลือกใหม่');
 
@@ -433,7 +434,8 @@ crud('menu-items', 'menuItems', 'products', (b) => {
     steps: cleanSteps(b.steps),
     image: cleanImage(b.image),
     sort: num(b.sort),
-    active: b.active !== false,
+    active: b.active !== false, // sold at the counter (staff POS)
+    activeOutside: b.activeOutside !== false, // sold outside / on the customer QR menu
   };
 }, { view: menuView });
 

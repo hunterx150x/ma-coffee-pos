@@ -62,9 +62,9 @@ function useCrud(endpoint, label) {
       toast(e.message, 'error');
     }
   };
-  const toggleActive = async (row, active) => {
+  const toggleActive = async (row, active, field = 'active') => {
     try {
-      await api(`/${endpoint}/${row.id}`, { method: 'PUT', body: { ...row, active } });
+      await api(`/${endpoint}/${row.id}`, { method: 'PUT', body: { ...row, [field]: active } });
       list.reload();
     } catch (e) {
       toast(e.message, 'error');
@@ -115,25 +115,27 @@ function MenuItems({ cats, ings }) {
           ))}
         </div>
         <button className="btn btn-primary" disabled={!cats.length}
-          onClick={() => crud.open({ categoryId: filter || cats[0]?.id, name: '', price: '', cost: '', costMode: 'manual', recipe: [], steps: [], sort: 0, active: true })}>
+          onClick={() => crud.open({ categoryId: filter || cats[0]?.id, name: '', price: '', cost: '', costMode: 'manual', recipe: [], steps: [], sort: 0, active: true, activeOutside: true })}>
           <Icon name="plus" /> เพิ่มเมนู
         </button>
       </div>
       {items.length ? (
         <div className="card table-card">
           <table className="table table-rows-click">
-            <thead><tr><th>เมนู</th><th className="num">ราคา</th><th className="num">ต้นทุน</th><th className="num hide-sm">กำไร/แก้ว</th><th>ขาย</th></tr></thead>
+            <thead><tr><th>เมนู</th><th className="num">ราคา</th><th className="num hide-sm">ต้นทุน</th><th className="num hide-sm">กำไร/แก้ว</th>
+              <th className="th-sell"><span className="hide-sm">ขาย</span>หน้าร้าน</th><th className="th-sell">นอกสถานที่<span className="hide-sm"> / QR</span></th></tr></thead>
             <tbody>
               {items.map((m) => {
                 const cost = costOf(m, ings);
                 const cat = cats.find((c) => c.id === m.categoryId);
                 return (
-                  <tr key={m.id} onClick={() => crud.open(m)} className={m.active ? '' : 'row-dim'}>
+                  <tr key={m.id} onClick={() => crud.open(m)} className={m.active || m.activeOutside !== false ? '' : 'row-dim'}>
                     <td className="td-menu"><MenuThumb item={m} icon={cat?.icon} className="list-thumb" /><div><b>{m.name}</b><div className="muted small">{cat ? `${cat.icon} ${cat.name}` : '-'}{m.costMode === 'recipe' ? ' · ต้นทุนจากสูตร' : ''}{m.steps?.length ? ` · วิธีทำ ${m.steps.length} ขั้นตอน` : ''}</div></div></td>
-                    <td className="num">{baht(m.price)}</td>
-                    <td className="num">{baht(cost)}</td>
+                    <td className="num">{baht(m.price)}<div className="muted small show-sm">ทุน {baht(cost)}</div></td>
+                    <td className="num hide-sm">{baht(cost)}</td>
                     <td className="num hide-sm"><Margin price={m.price} cost={cost} /></td>
                     <td onClick={(e) => e.stopPropagation()}><Toggle checked={m.active} onChange={(v) => crud.toggleActive(m, v)} /></td>
+                    <td onClick={(e) => e.stopPropagation()}><Toggle checked={m.activeOutside !== false} onChange={(v) => crud.toggleActive(m, v, 'activeOutside')} /></td>
                   </tr>
                 );
               })}
@@ -165,7 +167,10 @@ function MenuItems({ cats, ings }) {
             </div>
             <CostEditor f={f} setF={setF} ings={ings} />
             <StepsEditor f={f} setF={setF} ings={ings} />
-            <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="เปิดขายเมนูนี้" />
+            <div className="toggle-list">
+              <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
+              <Toggle checked={f.activeOutside !== false} onChange={(v) => setF({ ...f, activeOutside: v })} label="ขายนอกสถานที่ / ลูกค้าสแกน QR สั่งเอง" />
+            </div>
           </>
         )}
       </EditorModal>
