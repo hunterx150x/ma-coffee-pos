@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { baht, num, thDateTime } from '../utils.js';
-import { Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
+import { baht, num, presetRange, thDate, thDateTime, thTime } from '../utils.js';
+import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
 
 const MOVE_LABEL = { in: 'รับเข้า', out: 'เบิกออก', set: 'ตรวจนับ', sale: 'ขาย', void: 'คืนจากยกเลิกบิล' };
 const ADJUST = {
@@ -279,38 +279,94 @@ export default function Stock() {
   );
 }
 
+const MOVE_TYPES = ['in', 'out', 'set', 'sale', 'void'];
+const PER_PAGE = [50, 100, 200, 500];
+
 function Moves({ ings }) {
+  const [range, setRange] = useState(presetRange('month'));
   const [ingredientId, setIng] = useState('');
-  const moves = useAsync(() => api('/stock-moves', { query: { ingredientId } }), [ingredientId]);
+  const [user, setUser] = useState('');
+  const [type, setType] = useState('');
+  const [perPage, setPerPage] = useState(50);
+  const [page, setPage] = useState(1);
+  const filtersKey = [range.from, range.to, ingredientId, user, type, perPage].join('|');
+  useEffect(() => { setPage(1); }, [filtersKey]); // back to page 1 whenever a filter changes
+  const moves = useAsync(() => api('/stock-moves', { query: { ...range, ingredientId, user, type, perPage, page } }), [filtersKey, page]);
+  const d = moves.data;
+  const from = d ? (d.page - 1) * d.perPage + 1 : 0;
+  const to = d ? Math.min(d.total, d.page * d.perPage) : 0;
+
+  const pager = d && d.total > 0 && (
+    <div className="pager">
+      <span className="muted small">แสดง {num(from)}–{num(to)} จาก {num(d.total)} รายการ</span>
+      <div className="pager-ctrl">
+        <label className="pager-size">
+          <span className="muted small">ต่อหน้า</span>
+          <select className="input input-auto" value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
+            {PER_PAGE.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <button className="icon-btn" disabled={d.page <= 1} onClick={() => setPage(1)} aria-label="หน้าแรก">«</button>
+        <button className="icon-btn" disabled={d.page <= 1} onClick={() => setPage(d.page - 1)} aria-label="ก่อนหน้า"><Icon name="back" size={18} /></button>
+        <span className="pager-page">หน้า {d.page} / {d.pages}</span>
+        <button className="icon-btn" disabled={d.page >= d.pages} onClick={() => setPage(d.page + 1)} aria-label="ถัดไป"><Icon name="next" size={18} /></button>
+        <button className="icon-btn" disabled={d.page >= d.pages} onClick={() => setPage(d.pages)} aria-label="หน้าสุดท้าย">»</button>
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <div className="toolbar">
-        <select className="input input-auto" value={ingredientId} onChange={(e) => setIng(e.target.value)}>
-          <option value="">วัตถุดิบทั้งหมด</option>
-          {ings.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-        </select>
-      </div>
-      {moves.loading && !moves.data ? <Loading /> : moves.data?.length ? (
-        <div className="card table-card">
-          <div className="table-scroll">
-            <table className="table">
-              <thead><tr><th>เวลา</th><th>วัตถุดิบ</th><th>ประเภท</th><th className="num">จำนวน</th><th className="num hide-sm">คงเหลือ</th><th className="hide-sm">หมายเหตุ</th></tr></thead>
-              <tbody>
-                {moves.data.map((m) => (
-                  <tr key={m.id}>
-                    <td className="nowrap">{thDateTime(m.createdAt)}</td>
-                    <td>{m.ingredientName}</td>
-                    <td><span className={`badge badge-move-${m.type}`}>{MOVE_LABEL[m.type]}</span></td>
-                    <td className={`num ${m.qty < 0 ? 'text-bad' : 'text-good'}`}>{m.qty > 0 ? '+' : ''}{num(m.qty)} {m.unit}</td>
-                    <td className="num hide-sm">{num(m.balance)}</td>
-                    <td className="hide-sm muted">{[m.note, m.totalCost ? `ซื้อ ${baht(m.totalCost)}` : '', m.userName].filter(Boolean).join(' · ')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="card filters">
+        <DateRange value={range} onChange={setRange} />
+        <div className="moves-filters">
+          <select className="input" value={ingredientId} onChange={(e) => setIng(e.target.value)} aria-label="วัตถุดิบ">
+            <option value="">วัตถุดิบทั้งหมด</option>
+            {ings.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <select className="input" value={user} onChange={(e) => setUser(e.target.value)} aria-label="ผู้ทำรายการ">
+            <option value="">ผู้ทำรายการทุกคน</option>
+            {(d?.users || []).map((u) => <option key={u} value={u}>{u}</option>)}
+            {user && !(d?.users || []).includes(user) && <option value={user}>{user}</option>}
+          </select>
+          <select className="input" value={type} onChange={(e) => setType(e.target.value)} aria-label="ประเภท">
+            <option value="">ทุกประเภท</option>
+            {MOVE_TYPES.map((t) => <option key={t} value={t}>{MOVE_LABEL[t]}</option>)}
+          </select>
+          {(ingredientId || user || type) && (
+            <button className="btn btn-ghost btn-sm" onClick={() => { setIng(''); setUser(''); setType(''); }}>ล้างตัวกรอง</button>
+          )}
         </div>
-      ) : <Empty icon="history" title="ยังไม่มีการเคลื่อนไหว" />}
+      </div>
+      {moves.loading && !d ? <Loading /> : moves.error ? <ErrorBox error={moves.error} onRetry={moves.reload} /> : d?.rows.length ? (
+        <>
+          {pager}
+          <div className="card table-card">
+            <div className="table-scroll">
+              <table className="table">
+                <thead><tr><th>เวลา</th><th>วัตถุดิบ</th><th>ประเภท</th><th className="num">จำนวน</th><th className="num hide-sm">คงเหลือ</th><th className="hide-sm">ผู้ทำรายการ</th><th className="hide-sm">หมายเหตุ</th></tr></thead>
+                <tbody>
+                  {d.rows.map((m) => (
+                    <tr key={m.id}>
+                      <td className="nowrap">
+                        <span className="hide-sm">{thDateTime(m.createdAt)}</span>
+                        <span className="show-sm moves-when">{thDate(m.createdAt, { year: false })}<br /><span className="muted">{thTime(m.createdAt)}</span></span>
+                      </td>
+                      <td>{m.ingredientName}<div className="muted small show-sm">{m.userName || 'ระบบ'}</div></td>
+                      <td><span className={`badge badge-move-${m.type}`}>{MOVE_LABEL[m.type]}</span></td>
+                      <td className={`num ${m.qty < 0 ? 'text-bad' : 'text-good'}`}>{m.qty > 0 ? '+' : ''}{num(m.qty)} {m.unit}</td>
+                      <td className="num hide-sm">{num(m.balance)}</td>
+                      <td className="hide-sm">{m.userName || 'ระบบ'}</td>
+                      <td className="hide-sm muted">{[m.note, m.totalCost ? `ซื้อ ${baht(m.totalCost)}` : ''].filter(Boolean).join(' · ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {pager}
+        </>
+      ) : <Empty icon="history" title="ไม่มีการเคลื่อนไหวตามตัวกรองนี้" />}
     </>
   );
 }

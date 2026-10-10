@@ -594,14 +594,26 @@ app.post('/api/ingredients/:id/adjust', need('stock'), h((req) => {
   return ing;
 }));
 
+// Stock history, newest first, filtered and paged on the server (the log grows with every sale).
+const MOVE_PAGE_SIZES = [50, 100, 200, 500];
 app.get('/api/stock-moves', need('stock'), h((req) => {
+  const q = req.query;
   let list = getDb().stockMoves;
-  if (req.query.ingredientId) list = list.filter((m) => m.ingredientId === req.query.ingredientId);
-  if (req.query.from) {
-    const range = parseRange(req.query.from, req.query.to);
+  if (q.from || q.to) {
+    const range = parseRange(q.from, q.to);
     list = list.filter((m) => inRange(m.createdAt, range));
   }
-  return list.slice(-500).reverse();
+  // People list for the filter comes from the date range only, so choosing someone never empties it.
+  const users = [...new Set(list.map((m) => m.userName || 'ระบบ'))].sort((a, b) => a.localeCompare(b, 'th'));
+  if (q.ingredientId) list = list.filter((m) => m.ingredientId === q.ingredientId);
+  if (q.user) list = list.filter((m) => (m.userName || 'ระบบ') === q.user);
+  if (q.type) list = list.filter((m) => m.type === q.type);
+  const perPage = MOVE_PAGE_SIZES.includes(Number(q.perPage)) ? Number(q.perPage) : 50;
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const page = Math.min(pages, Math.max(1, Math.floor(Number(q.page) || 1)));
+  const end = total - (page - 1) * perPage;
+  return { rows: list.slice(Math.max(0, end - perPage), end).reverse(), total, page, pages, perPage, users };
 }));
 
 // ---------- customers ----------

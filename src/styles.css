@@ -976,3 +976,14 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cat-switches .toggle-track { width: 38px; height: 22px; }
 .cat-switches .toggle-thumb { width: 16px; height: 16px; }
 .cat-switches .toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(16px); }
+
+/* ---------- stock history paging ---------- */
+.moves-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; align-items: center; }
+.pager { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.pager-ctrl { display: flex; align-items: center; gap: 4px; }
+.pager-size { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.pager-size .input { min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+.pager-page { font-size: 13.5px; min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
+.pager .icon-btn { width: 36px; height: 36px; font-size: 18px; }
+.pager-size span { white-space: nowrap; }
+.moves-when { font-size: 12.5px; line-height: 1.35; }
