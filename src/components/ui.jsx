@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { presetRange } from '../utils.js';
 
 // ---------- icons (stroke icons, 24px grid) ----------
@@ -42,6 +43,8 @@ const PATHS = {
   down: 'M6 9l6 6 6-6',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6l4 2',
   tag: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z M7 7h.01',
+  rotate: 'M21 12a9 9 0 1 1-2.6-6.4 M21 3v6h-6',
+  crop: 'M6 2v14a2 2 0 0 0 2 2h14 M18 22V8a2 2 0 0 0-2-2H2',
 };
 
 export function Icon({ name, size = 20, stroke = 2, className = '' }) {
@@ -54,19 +57,29 @@ export function Icon({ name, size = 20, stroke = 2, className = '' }) {
 }
 
 // ---------- modal ----------
+// Open modals, newest last: Escape closes only the top one, and page scroll stays locked until all are closed.
+const modalStack = [];
+
 export function Modal({ open, title, onClose, children, footer, size = 'md' }) {
+  const self = useRef({});
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const me = self.current;
+    modalStack.push(me);
+    const onKey = (e) => e.key === 'Escape' && modalStack[modalStack.length - 1] === me && closeRef.current?.();
     window.addEventListener('keydown', onKey);
     document.body.classList.add('no-scroll');
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.classList.remove('no-scroll');
+      modalStack.splice(modalStack.indexOf(me), 1);
+      if (!modalStack.length) document.body.classList.remove('no-scroll');
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
-  return (
+  // Portal to <body> so a dialog opened from inside another (e.g. photo crop) isn't clipped by it.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={`modal modal-${size}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
@@ -78,7 +91,8 @@ export function Modal({ open, title, onClose, children, footer, size = 'md' }) {
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
