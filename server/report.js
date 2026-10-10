@@ -1,4 +1,5 @@
 import { round2 } from '../shared/pricing.js';
+import { isIngredientPurchase } from '../shared/expenses.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 export const localDate = (d) => {
@@ -44,16 +45,20 @@ export function buildReport(db, range) {
   const orders = db.orders.filter((o) => inRange(o.createdAt, range));
   const paid = orders.filter((o) => o.status === 'paid');
   const voided = orders.filter((o) => o.status === 'void');
-  const expenses = db.expenses.filter((e) => {
+  const allExpenses = db.expenses.filter((e) => {
     const d = e.date || localDate(e.createdAt);
     return d >= range.from && d <= range.to;
   });
+  // Operating expenses go into the P&L; ingredient purchases are shown separately (already in cost of goods).
+  const expenses = allExpenses.filter((e) => !isIngredientPurchase(e));
+  const purchases = allExpenses.filter(isIngredientPurchase);
 
   const sum = (arr, f) => round2(arr.reduce((s, x) => s + (Number(f(x)) || 0), 0));
 
   const sales = sum(paid, (o) => o.total);
   const cost = sum(paid, (o) => o.cost);
   const expenseTotal = sum(expenses, (e) => e.amount);
+  const purchaseTotal = sum(purchases, (e) => e.amount);
   const capitalIn = sum((db.capital || []).filter((c) => c.date >= range.from && c.date <= range.to), (c) => c.amount);
   const grossProfit = round2(sales - cost);
 
@@ -73,8 +78,10 @@ export function buildReport(db, range) {
     expenses: expenseTotal,
     netProfit: round2(grossProfit - expenseTotal),
     // Owner capital is shown beside the P&L, never inside it.
+    ingredientPurchases: purchaseTotal,
+    spending: round2(expenseTotal + purchaseTotal), // all cash paid out in the range
     capitalIn,
-    expensesAfterCapital: round2(expenseTotal - capitalIn),
+    expensesAfterCapital: round2(expenseTotal + purchaseTotal - capitalIn),
     avgPerOrder: paid.length ? round2(sales / paid.length) : 0,
     voidCount: voided.length,
     voidAmount: sum(voided, (o) => o.total),
@@ -166,7 +173,7 @@ export function buildReport(db, range) {
   }));
 
   const expenseByCategory = new Map();
-  for (const e of expenses) {
+  for (const e of allExpenses) {
     const k = e.category || 'อื่นๆ';
     expenseByCategory.set(k, round2((expenseByCategory.get(k) || 0) + (Number(e.amount) || 0)));
   }

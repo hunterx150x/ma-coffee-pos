@@ -2,8 +2,13 @@ import { useState } from 'react';
 import { api } from '../api.js';
 import { baht, presetRange, thDate, today } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
+import { EXPENSE_CATEGORIES, OTHER_EXPENSE, isIngredientPurchase } from '../../shared/expenses.js';
 
-const CATS = ['ค่าเช่า', 'ค่าน้ำ-ไฟ', 'ค่าจ้างพนักงาน', 'อุปกรณ์', 'การตลาด', 'ค่าขนส่ง', 'อื่นๆ'];
+const CATS = EXPENSE_CATEGORIES;
+// "อื่นๆ" + typed text is saved as the typed text, so it shows up as its own category in reports.
+const toForm = (e) => (CATS.includes(e.category) && e.category !== OTHER_EXPENSE
+  ? { ...e, otherText: '' }
+  : { ...e, category: OTHER_EXPENSE, otherText: e.category === OTHER_EXPENSE ? '' : e.category || '' });
 
 export default function Expenses() {
   const { toast, confirm } = useUi();
@@ -16,6 +21,7 @@ export default function Expenses() {
   const [err, setErr] = useState('');
   const rows = list.data || [];
   const total = rows.reduce((s, e) => s + e.amount, 0);
+  const purchaseTotal = rows.filter(isIngredientPurchase).reduce((s, e) => s + e.amount, 0);
   const capRange = cap.data?.range.capital || 0;
   const afterCapital = total - capRange;
   const all = cap.data?.allTime;
@@ -23,9 +29,12 @@ export default function Expenses() {
 
   const save = async () => {
     setErr('');
+    const isOther = f.category === OTHER_EXPENSE;
+    if (isOther && !f.otherText.trim()) return setErr('กรุณาระบุว่าเป็นค่าอะไร (หมวดอื่นๆ)');
+    const { otherText, ...body } = { ...f, category: isOther ? f.otherText.trim() : f.category };
     try {
-      if (f.id) await api(`/expenses/${f.id}`, { method: 'PUT', body: f });
-      else await api('/expenses', { method: 'POST', body: f });
+      if (f.id) await api(`/expenses/${f.id}`, { method: 'PUT', body });
+      else await api('/expenses', { method: 'POST', body });
       toast('บันทึกค่าใช้จ่ายแล้ว');
       setF(null);
       reloadAll();
@@ -59,7 +68,7 @@ export default function Expenses() {
     setC(null);
     cap.reload();
   };
-  const newExpense = () => { setErr(''); setF({ date: today(), category: CATS[0], description: '', amount: '' }); };
+  const newExpense = () => { setErr(''); setF({ date: today(), category: CATS[0], otherText: '', description: '', amount: '' }); };
   const newCapital = () => { setErr(''); setC({ date: today(), source: 'เจ้าของร้าน', note: '', amount: '' }); };
 
   return (
@@ -71,7 +80,7 @@ export default function Expenses() {
       <div className="card filters"><DateRange value={range} onChange={setRange} /></div>
 
       <div className="kpis kpis-3">
-        <div className="kpi"><div className="kpi-label">ค่าใช้จ่ายช่วงนี้</div><div className="kpi-value">{baht(total)}</div><div className="kpi-sub">{rows.length} รายการ</div></div>
+        <div className="kpi"><div className="kpi-label">ค่าใช้จ่ายช่วงนี้</div><div className="kpi-value">{baht(total)}</div><div className="kpi-sub">{rows.length} รายการ{purchaseTotal ? ` · ซื้อวัตถุดิบ ${baht(purchaseTotal)}` : ''}</div></div>
         <div className="kpi kpi-good"><div className="kpi-label">เงินทุนเพิ่มเข้าช่วงนี้</div><div className="kpi-value">{baht(capRange)}</div><div className="kpi-sub">{cap.data?.rows.length || 0} รายการ</div></div>
         <div className={`kpi ${afterCapital > 0 ? 'kpi-bad' : 'kpi-good'}`}>
           <div className="kpi-label">{afterCapital > 0 ? 'ค่าใช้จ่ายหลังหักเงินทุน' : 'เงินทุนเหลือหลังหักค่าใช้จ่าย'}</div>
@@ -94,17 +103,17 @@ export default function Expenses() {
 
       {tab === 'expenses' && (
         <>
-          <p className="muted small">ไม่ต้องบันทึกค่าวัตถุดิบที่นี่ — ต้นทุนวัตถุดิบคิดจากเมนูที่ขายได้แล้ว ให้บันทึกเฉพาะค่าใช้จ่ายดำเนินงาน เช่น ค่าเช่า ค่าไฟ ค่าแรง</p>
+          <p className="muted small">หมวด <b>ค่าวัตถุดิบ</b> บันทึกเงินที่จ่ายซื้อของเข้าร้านได้ แต่ไม่ถูกหักซ้ำในกำไร เพราะรายงานคิดต้นทุนวัตถุดิบตามสูตรเมนูที่ขายไปแล้ว (ยังนับในใบสรุปเงินคงเหลือและเงินทุน) · หมวดอื่นๆ หักเป็นค่าใช้จ่ายดำเนินงานตามปกติ</p>
           {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} /> : rows.length ? (
             <div className="card table-card">
               <table className="table table-rows-click">
                 <thead><tr><th>วันที่</th><th>รายการ</th><th className="hide-sm">หมวด</th><th className="num">จำนวนเงิน</th></tr></thead>
                 <tbody>
                   {rows.map((e) => (
-                    <tr key={e.id} onClick={() => { setErr(''); setF({ ...e }); }}>
+                    <tr key={e.id} onClick={() => { setErr(''); setF(toForm(e)); }}>
                       <td className="nowrap">{thDate(e.date)}</td>
                       <td>{e.description}<div className="muted small show-sm">{e.category}</div></td>
-                      <td className="hide-sm"><span className="badge">{e.category}</span></td>
+                      <td className="hide-sm"><span className={`badge ${isIngredientPurchase(e) ? 'badge-transfer' : ''}`}>{e.category}</span></td>
                       <td className="num"><b>{baht(e.amount)}</b></td>
                     </tr>
                   ))}
@@ -157,6 +166,11 @@ export default function Expenses() {
               <div className="chips">
                 {CATS.map((x) => <button key={x} className={`chip ${f.category === x ? 'active' : ''}`} onClick={() => setF({ ...f, category: x })}>{x}</button>)}
               </div>
+              {f.category === OTHER_EXPENSE && (
+                <input className="input other-cat" value={f.otherText} maxLength={40} autoFocus
+                  placeholder="ระบุว่าเป็นค่าอะไร เช่น ค่าซ่อมเครื่องชง" onChange={(e) => { setErr(''); setF({ ...f, otherText: e.target.value }); }} />
+              )}
+              {isIngredientPurchase(f) && <span className="field-hint">ไม่หักซ้ำในกำไร (คิดเป็นต้นทุนสินค้าตามสูตรแล้ว) แต่นับเป็นเงินที่จ่ายออก</span>}
             </Field>
             {err && <div className="field-error">{err}</div>}
           </div>

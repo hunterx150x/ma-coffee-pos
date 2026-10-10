@@ -64,6 +64,7 @@ export function summaryRows(report, orders, shopName) {
     ['กำไรขั้นต้น', t.grossProfit],
     ['% กำไรขั้นต้น', t.grossMargin],
     ['ค่าใช้จ่ายดำเนินงาน', t.expenses],
+    ['ซื้อวัตถุดิบ (ไม่หักในกำไร เพราะคิดเป็นต้นทุนสินค้าแล้ว)', t.ingredientPurchases || 0],
     ['กำไร(ขาดทุน)สุทธิ', t.netProfit],
     ['เงินทุนเพิ่มเข้า (ไม่นับเป็นกำไร)', t.capitalIn || 0],
     ['ยอดเฉลี่ยต่อบิล', t.avgPerOrder],
