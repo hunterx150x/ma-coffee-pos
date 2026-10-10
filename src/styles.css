@@ -782,3 +782,23 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 /* Component display rules (.btn, .stock-row-actions) would otherwise beat the responsive helpers. */
 @media (min-width: 600px) { .stock-table .show-sm { display: none !important; } }
 @media (max-width: 599px) { .stock-table .hide-sm { display: none !important; } }
+
+/* Lists inside a max-height scroller must not squash their rows (rows were overlapping). */
+.list > * { flex-shrink: 0; }
+.list-item { align-items: flex-start; }
+.list-item .avatar { margin-top: 2px; }
+.list-item-main { gap: 2px; }
+.list-item .stamp-card-compact { align-self: stretch; }
+@media (max-width: 599px) {
+  /* On phones, one page scroll is easier than a small scroll box inside the page. */
+  .list { max-height: none; overflow: visible; }
+}
+
+/* Phones: tighter table cells so menu / stock tables fit without sideways scrolling. */
+@media (max-width: 430px) {
+  .table th, .table td { padding-left: 8px; padding-right: 8px; }
+  .list-thumb { width: 36px; height: 36px; font-size: 18px; }
+  .td-menu { gap: 8px; }
+  .stock-table td:first-child { min-width: 0; }
+}
+.stamp-card-compact .stamp-dots { gap: 3px; }

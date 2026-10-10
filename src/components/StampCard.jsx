@@ -18,7 +18,9 @@ export default function StampCard({ points = 0, loyalty, compact = false, title 
       </div>
       <div className="stamp-text">
         {rewards > 0 && <b className="stamp-reward">แลกฟรีได้ {rewards} แก้ว · </b>}
-        <span>{points} แต้ม · อีก {toNext} แก้วรับฟรีแก้วถัดไป{loyalty.rewardMaxValue ? ` (ไม่เกิน ฿${loyalty.rewardMaxValue})` : ''}</span>
+        {compact
+          ? <span>{points} แต้ม · อีก {toNext} แก้วรับฟรี</span>
+          : <span>{points} แต้ม · อีก {toNext} แก้วรับฟรีแก้วถัดไป{loyalty.rewardMaxValue ? ` (ไม่เกิน ฿${loyalty.rewardMaxValue})` : ''}</span>}
       </div>
     </div>
   );
