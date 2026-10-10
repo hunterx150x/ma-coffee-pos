@@ -118,7 +118,7 @@ export default function Queue() {
                 <header className="queue-head">
                   <div className="queue-no">{x.queueNo}</div>
                   <div className="queue-head-main">
-                    <b className="queue-name">{x.name}</b>
+                    <b className="queue-name">{x.source === 'customer' && <span className="badge badge-self">📱 สั่งเอง</span>}{x.name}</b>
                     <div className="muted small">
                       <Icon name="clock" size={12} /> {singleDay ? thTime(x.createdAt) : `${thDate(x.createdAt)} ${thTime(x.createdAt)}`}
                       {open && singleDay && ` · รอ ${mins} นาที`} · {x.staffName}

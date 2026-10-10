@@ -2,6 +2,7 @@ import './env.js';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { load, getDb, save, flush, markDirty, uid, now, replaceDb, COLLECTIONS } from './db.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
 import { buildReport, parseRange, inRange, localDate } from './report.js';
@@ -121,6 +122,99 @@ app.post('/api/auth/login', h((req) => {
   return { token: signToken({ uid: user.id, tv: user.tokenVersion }, getDb().meta.secret), user: publicUser(user) };
 }));
 
+// ---------- public: menu photos + customer self-order (no login) ----------
+app.get('/api/menu-image/:id', (req, res) => {
+  const m = getDb().menuItems.find((x) => x.id === req.params.id);
+  const match = m?.image && m.image.match(/^data:(image\/[a-z]+);base64,(.+)$/);
+  if (!match) return res.status(404).end();
+  res.setHeader('Content-Type', match[1]);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.end(Buffer.from(match[2], 'base64'));
+});
+
+const selfOrderOpen = () => getDb().settings.selfOrder?.enabled !== false;
+
+app.get('/api/public/menu', h(() => {
+  const db = getDb();
+  const cats = db.categories.filter((c) => c.active).sort(bySort);
+  const catIds = new Set(cats.map((c) => c.id));
+  return {
+    shop: { name: db.settings.shopName, phone: db.settings.phone },
+    open: selfOrderOpen(),
+    message: db.settings.selfOrder?.message || '',
+    sweetnessLevels: db.settings.sweetnessLevels,
+    categories: cats.map(({ id, name, icon }) => ({ id, name, icon })),
+    menuItems: db.menuItems.filter((m) => m.active && catIds.has(m.categoryId)).sort(bySort)
+      .map((m) => ({ id: m.id, categoryId: m.categoryId, name: m.name, price: m.price, imageUrl: imageUrl(m) })),
+    toppings: db.toppings.filter((t) => t.active).sort(bySort).map(({ id, name, price }) => ({ id, name, price })),
+  };
+}));
+
+// Light anti-spam for the public order form.
+const publicOrders = new Map();
+const PUBLIC_ORDER_WINDOW_MS = 10 * 60 * 1000;
+const PUBLIC_ORDER_MAX = 6;
+
+app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
+  if (!selfOrderOpen()) fail(403, 'ร้านปิดรับออเดอร์ออนไลน์ชั่วคราว กรุณาสั่งที่หน้าร้าน');
+  const b = req.body || {};
+  const name = str(b.name, 40);
+  if (!name) fail(400, 'กรุณากรอกชื่อ');
+  if (!Array.isArray(b.items) || !b.items.length) fail(400, 'ยังไม่ได้เลือกเมนู');
+  if (b.items.length > 20 || b.items.some((i) => Number(i.qty) > 20)) fail(400, 'รายการเยอะเกินไป กรุณาสั่งที่หน้าร้าน');
+  const db = getDb();
+  const activeItem = (id) => db.menuItems.some((m) => m.id === id && m.active);
+  const activeTop = (id) => db.toppings.some((t) => t.id === id && t.active);
+  if (!b.items.every((i) => activeItem(i.menuItemId))) fail(400, 'มีเมนูที่ไม่เปิดขายแล้ว กรุณาเลือกใหม่');
+
+  const ip = req.ip;
+  const hits = (publicOrders.get(ip) || []).filter((t) => t > Date.now() - PUBLIC_ORDER_WINDOW_MS);
+  if (hits.length >= PUBLIC_ORDER_MAX) fail(429, 'สั่งบ่อยเกินไป กรุณาติดต่อพนักงาน');
+  hits.push(Date.now());
+  publicOrders.set(ip, hits);
+
+  const items = b.items.map((i) => ({
+    menuItemId: i.menuItemId,
+    sweetness: db.settings.sweetnessLevels.includes(Number(i.sweetness)) ? Number(i.sweetness) : null,
+    toppingIds: (i.toppingIds || []).filter(activeTop),
+    discountIds: [], // discounts are applied by staff at the counter
+    note: i.note,
+    qty: i.qty,
+  }));
+  const q = createQueue({ name, note: b.note, items, staffId: null, staffName: 'ลูกค้าสั่งเอง (QR)', source: 'customer' });
+  return { token: q.publicToken, queueNo: q.queueNo };
+}));
+
+app.get('/api/public/queues/:token', h((req) => {
+  const db = getDb();
+  const q = db.queues.find((x) => x.publicToken && x.publicToken === String(req.params.token));
+  if (!q) fail(404, 'ไม่พบคิวนี้');
+  const today = localDate(q.createdAt);
+  const sameDay = db.queues.filter((x) => localDate(x.createdAt) === today);
+  // Queues still waiting to be made that were placed before this one (first come, first served).
+  const ahead = q.status === 'waiting' ? sameDay.filter((x) => x.status === 'waiting' && x.createdAt < q.createdAt).length : 0;
+  return {
+    queueNo: q.queueNo,
+    name: q.name,
+    status: q.status,
+    createdAt: q.createdAt,
+    ahead,
+    position: q.status === 'waiting' ? ahead + 1 : 0,
+    waitingTotal: sameDay.filter((x) => x.status === 'waiting').length,
+    total: q.total,
+    cups: q.cups,
+    orderNo: q.orderNo || null,
+    lines: q.lines.map((l) => ({
+      name: l.name, qty: l.qty, sweetness: l.sweetness, note: l.note, total: l.total, gross: l.gross,
+      toppings: l.toppings.map((t) => ({ id: t.id, name: t.name, price: t.price })),
+      discounts: l.discounts.map((d) => ({ id: d.id, name: d.name, amount: d.amount })),
+    })),
+    shop: { name: db.settings.shopName },
+  };
+}));
+
+app.get('/api/public/events', (req, res) => events.subscribe(req, res, { isPublic: true }));
+
 // Realtime stream. EventSource cannot send headers, so the token comes in the query string.
 app.get('/api/events', (req, _res, next) => {
   req.headers.authorization = `Bearer ${String(req.query.token || '')}`;
@@ -158,7 +252,8 @@ function catalog(user) {
       unit: st.ingredientId ? ing(st.ingredientId)?.unit || '' : '',
     })),
   });
-  const strip = (x) => {
+  const strip = (raw) => {
+    const x = raw.image !== undefined ? menuView(raw) : raw;
     if (showCost) return { ...x, unitCost: unitCost(x, db.ingredients), howTo: howTo(x) };
     const { cost, recipe, costMode, ...rest } = x;
     return { ...rest, howTo: howTo(x) };
@@ -174,21 +269,21 @@ function catalog(user) {
 app.get('/api/catalog', h((req) => catalog(req.user)));
 
 // ---------- generic CRUD ----------
-function crud(route, collection, perm, clean, { canDelete } = {}) {
-  app.get(`/api/${route}`, anyOf(perm, 'pos'), h(() => [...getDb()[collection]].sort(bySort)));
+function crud(route, collection, perm, clean, { canDelete, view = (x) => x } = {}) {
+  app.get(`/api/${route}`, anyOf(perm, 'pos'), h(() => [...getDb()[collection]].sort(bySort).map(view)));
   app.post(`/api/${route}`, need(perm), h((req) => {
     const t = now();
     const row = { id: uid(), active: true, ...clean(req.body || {}), createdAt: t, updatedAt: t };
     getDb()[collection].push(row);
     save();
-    return row;
+    return view(row);
   }));
   app.put(`/api/${route}/:id`, need(perm), h((req) => {
     const row = getDb()[collection].find((x) => x.id === req.params.id);
     if (!row) fail(404, 'ไม่พบข้อมูล');
     Object.assign(row, clean({ ...row, ...(req.body || {}) }), { updatedAt: now() });
     save();
-    return row;
+    return view(row);
   }));
   app.delete(`/api/${route}/:id`, need(perm), h((req) => {
     const list = getDb()[collection];
@@ -236,6 +331,18 @@ crud('categories', 'categories', 'products', (b) => ({
   },
 });
 
+// Menu photos are stored inline as small data URLs (resized in the browser) and served by /api/menu-image/:id.
+const MAX_IMAGE_CHARS = 400 * 1024;
+const cleanImage = (v) => {
+  if (!v) return '';
+  const img = String(v);
+  if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(img)) fail(400, 'ไฟล์รูปไม่ถูกต้อง (รองรับ JPG / PNG / WebP)');
+  if (img.length > MAX_IMAGE_CHARS) fail(400, 'รูปมีขนาดใหญ่เกินไป');
+  return img;
+};
+const imageUrl = (m) => (m.image ? `/api/menu-image/${m.id}?v=${crypto.createHash('md5').update(m.image).digest('hex').slice(0, 8)}` : null);
+const menuView = ({ image, ...m }) => ({ ...m, imageUrl: imageUrl({ ...m, image }) });
+
 crud('menu-items', 'menuItems', 'products', (b) => {
   if (!getDb().categories.some((c) => c.id === b.categoryId)) fail(400, 'กรุณาเลือกประเภทเมนู');
   return {
@@ -246,10 +353,11 @@ crud('menu-items', 'menuItems', 'products', (b) => {
     costMode: b.costMode === 'recipe' ? 'recipe' : 'manual',
     recipe: cleanRecipe(b.recipe),
     steps: cleanSteps(b.steps),
+    image: cleanImage(b.image),
     sort: num(b.sort),
     active: b.active !== false,
   };
-});
+}, { view: menuView });
 
 crud('toppings', 'toppings', 'products', (b) => ({
   name: required(str(b.name, 60), 'ชื่อท็อปปิ้ง'),
@@ -517,36 +625,43 @@ app.get('/api/queues/open-count', anyOf('queue', 'pos'), h(() => {
   return { count: getDb().queues.filter((q) => ['waiting', 'done'].includes(q.status) && inRange(q.createdAt, today)).length };
 }));
 
-app.post('/api/queues', need('pos'), h((req) => {
+function createQueue({ name, note, items, customer, staffId, staffName, source = 'staff' }) {
   const db = getDb();
-  const b = req.body || {};
-  const lines = priceItems(b.items);
+  const lines = priceItems(items);
   const s = summarize(lines);
   const today = localDate(new Date());
   const queueNo = db.queues.filter((q) => localDate(q.createdAt) === today).length + 1;
   const queue = {
     id: uid(),
+    // Unguessable id for the customer's public "track my queue" page.
+    publicToken: crypto.randomBytes(12).toString('hex'),
     queueNo,
     createdAt: now(),
     status: 'waiting',
-    name: str(b.name, 60) || `คิว ${queueNo}`,
-    note: str(b.note, 200),
+    source,
+    name: str(name, 60) || `คิว ${queueNo}`,
+    note: str(note, 200),
     // Only an existing customer is linked; queue names are never saved as customers.
-    customer: b.customer?.type === 'old' && db.customers.some((c) => c.id === b.customer.id) ? { type: 'old', id: b.customer.id } : null,
-    items: b.items.map((i) => ({
+    customer: customer?.type === 'old' && db.customers.some((c) => c.id === customer.id) ? { type: 'old', id: customer.id } : null,
+    items: items.map((i) => ({
       menuItemId: i.menuItemId, sweetness: i.sweetness ?? null, toppingIds: i.toppingIds || [],
       discountIds: i.discountIds || [], note: str(i.note, 200), qty: Math.max(1, Math.floor(Number(i.qty) || 1)),
     })),
     lines,
     total: s.total,
     cups: s.cups,
-    staffId: req.user.id,
-    staffName: req.user.name,
+    staffId,
+    staffName,
   };
   db.queues.push(queue);
   save();
   events.broadcast('queues', { id: queue.id, status: queue.status });
   return queue;
+}
+
+app.post('/api/queues', need('pos'), h((req) => {
+  const b = req.body || {};
+  return createQueue({ name: b.name, note: b.note, items: b.items, customer: b.customer, staffId: req.user.id, staffName: req.user.name });
 }));
 
 app.post('/api/queues/:id/status', need('queue'), h((req) => {
@@ -704,6 +819,9 @@ app.put('/api/settings', need('settings'), h((req) => {
   if (b.phone !== undefined) s.phone = str(b.phone, 30);
   if (b.promptPayId !== undefined) s.promptPayId = str(b.promptPayId, 20).replace(/[^0-9]/g, '');
   if (b.receiptFooter !== undefined) s.receiptFooter = str(b.receiptFooter, 200);
+  if (b.selfOrder && typeof b.selfOrder === 'object') {
+    s.selfOrder = { enabled: b.selfOrder.enabled !== false, message: str(b.selfOrder.message, 200) };
+  }
   if (b.line && typeof b.line === 'object') {
     const cur = s.line || {};
     s.line = {

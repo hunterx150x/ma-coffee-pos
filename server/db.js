@@ -181,6 +181,7 @@ function defaultSettings() {
     receiptFooter: 'ขอบคุณที่อุดหนุนค่ะ ☕',
     sweetnessLevels: [25, 50, 75, 100],
     line: { groupId: '', sale: true, void: true, lowStock: true },
+    selfOrder: { enabled: true, message: '' },
     lowStockAlert: true,
   };
 }

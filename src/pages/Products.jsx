@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { recipeCost, round2 } from '../../shared/pricing.js';
+import { ImagePicker, MenuThumb } from '../components/MenuImage.jsx';
 import { baht, discountLabel, num } from '../utils.js';
 import { Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, Toggle, useAsync, useUi } from '../components/ui.jsx';
 
@@ -128,7 +129,7 @@ function MenuItems({ cats, ings }) {
                 const cat = cats.find((c) => c.id === m.categoryId);
                 return (
                   <tr key={m.id} onClick={() => crud.open(m)} className={m.active ? '' : 'row-dim'}>
-                    <td><b>{m.name}</b><div className="muted small">{cat ? `${cat.icon} ${cat.name}` : '-'}{m.costMode === 'recipe' ? ' · ต้นทุนจากสูตร' : ''}{m.steps?.length ? ` · วิธีทำ ${m.steps.length} ขั้นตอน` : ''}</div></td>
+                    <td className="td-menu"><MenuThumb item={m} icon={cat?.icon} className="list-thumb" /><div><b>{m.name}</b><div className="muted small">{cat ? `${cat.icon} ${cat.name}` : '-'}{m.costMode === 'recipe' ? ' · ต้นทุนจากสูตร' : ''}{m.steps?.length ? ` · วิธีทำ ${m.steps.length} ขั้นตอน` : ''}</div></div></td>
                     <td className="num">{baht(m.price)}</td>
                     <td className="num">{baht(cost)}</td>
                     <td className="num hide-sm"><Margin price={m.price} cost={cost} /></td>
@@ -144,6 +145,8 @@ function MenuItems({ cats, ings }) {
       <EditorModal crud={crud} title={f?.id ? 'แก้ไขเมนู' : 'เพิ่มเมนูใหม่'} onSubmit={() => crud.save(f)}>
         {f && (
           <>
+            <ImagePicker value={f.image} currentUrl={f.imageUrl} icon={cats.find((c) => c.id === f.categoryId)?.icon}
+              onChange={(image) => setF({ ...f, image })} />
             <div className="form-grid">
               <Field label="ชื่อเมนู *">
                 <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus />

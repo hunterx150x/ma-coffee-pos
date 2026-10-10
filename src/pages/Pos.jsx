@@ -6,6 +6,7 @@ import { Icon, Modal, Field, Loading, ErrorBox, Empty, useAsync, useUi } from '.
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
 import HowToModal from '../components/HowTo.jsx';
+import { MenuThumb } from '../components/MenuImage.jsx';
 
 const STEPS = ['ลูกค้า', 'ประเภท', 'เมนู', 'ความหวาน', 'ท็อปปิ้ง', 'ส่วนลด', 'สรุปรายการ', 'ชำระเงิน'];
 const CART_KEY = 'ma_pos_cart';
@@ -230,6 +231,7 @@ export default function Pos({ go }) {
                     setDraft((d) => ({ ...d, menuItemId: m.id }));
                     setStep(4);
                   }}>
+                  <MenuThumb item={m} icon={catalog.categories.find((c) => c.id === m.categoryId)?.icon} className="tile-thumb" />
                   <span className="tile-name">{m.name}</span>
                   <span className="tile-price">{baht(m.price)}</span>
                 </button>

@@ -4,6 +4,7 @@ import { useAuth } from '../App.jsx';
 import { today } from '../utils.js';
 import { Field, Icon, Loading, PageHead, Toggle, useAsync, useUi } from '../components/ui.jsx';
 import { thDateTime } from '../utils.js';
+import QRCode from 'qrcode';
 
 export default function Settings() {
   const { user } = useAuth();
@@ -82,6 +83,7 @@ export default function Settings() {
             <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
           </Field>
         </div>
+        <SelfOrderCard so={{ enabled: true, message: '', ...(f.selfOrder || {}) }} setSo={(so) => setF({ ...f, selfOrder: so })} />
         <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />
         {user.role === 'owner' && (
           <div className="card form">
@@ -155,6 +157,58 @@ function LineCard({ ln, setLine, status, onSaveFirst }) {
         <p className="small">พิมพ์ในกลุ่มของร้าน (ตอบกลับฟรี ไม่ใช้โควตา): <b>ยอดวันนี้</b> = สรุปยอดขาย · <b>สต๊อก</b> = วัตถุดิบใกล้หมด</p>
         <p className="small muted">หมายเหตุ: ข้อความที่ส่งเข้ากลุ่มนับโควตาตามจำนวนสมาชิกในกลุ่ม ถ้าโควตาไม่พอให้ปิด “แจ้งทุกครั้งที่ขาย” แล้วใช้คำสั่ง “ยอดวันนี้” แทน</p>
       </details>
+    </div>
+  );
+}
+
+/** Public "scan to order" link for customers, with a printable QR code. */
+function SelfOrderCard({ so, setSo }) {
+  const url = `${window.location.origin}/order`;
+  const [qr, setQr] = useState(null);
+  const { toast } = useUi();
+  useEffect(() => {
+    QRCode.toDataURL(url, { margin: 1, width: 480 }).then(setQr).catch(() => setQr(null));
+  }, [url]);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('คัดลอกลิงก์แล้ว');
+    } catch {
+      toast(url);
+    }
+  };
+  return (
+    <div className="card form">
+      <h3 className="card-title">ลูกค้าสแกนสั่งเอง (QR หน้าร้าน)</h3>
+      <Toggle checked={so.enabled} onChange={(v) => setSo({ ...so, enabled: v })} label="เปิดรับออเดอร์จากลูกค้า" />
+      <div className="selforder">
+        {qr && (
+          <div className="selforder-qr" id="selforder-qr">
+            <img src={qr} alt="QR สั่งเครื่องดื่ม" />
+            <div className="selforder-qr-text">สแกนเพื่อสั่งเครื่องดื่ม<br /><small>ชำระเงินที่หน้าร้าน</small></div>
+          </div>
+        )}
+        <div className="selforder-side">
+          <code className="selforder-url">{url}</code>
+          <div className="form-actions form-actions-left">
+            <button className="btn btn-sm btn-outline" onClick={copy}>คัดลอกลิงก์</button>
+            <a className="btn btn-sm btn-outline" href={url} target="_blank" rel="noreferrer">เปิดดูหน้าลูกค้า</a>
+            {qr && <a className="btn btn-sm btn-outline" href={qr} download="ma-coffee-order-qr.png"><Icon name="download" size={16} /> ดาวน์โหลด QR</a>}
+            {qr && (
+              <button className="btn btn-sm btn-outline" onClick={() => {
+                document.body.classList.add('printing-qr');
+                setTimeout(() => { window.print(); document.body.classList.remove('printing-qr'); }, 50);
+              }}><Icon name="print" size={16} /> พิมพ์ QR</button>
+            )}
+          </div>
+          <p className="muted small">ออเดอร์จากลูกค้าจะเข้าเมนู “คิว” ทันที (มีป้าย 📱 สั่งเอง) ลูกค้าดูลำดับคิวของตัวเองได้แบบ realtime ส่วนลดให้พนักงานกดเพิ่มตอนชำระเงินไม่ได้ — ถ้าต้องให้ส่วนลด ให้ขายผ่านหน้าขายหน้าร้านแทน</p>
+          {!so.enabled && (
+            <Field label="ข้อความเมื่อปิดรับออเดอร์">
+              <input className="input" value={so.message} placeholder="เช่น วันนี้ร้านปิด 18:00 น." onChange={(e) => setSo({ ...so, message: e.target.value })} />
+            </Field>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
