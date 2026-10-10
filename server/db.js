@@ -204,7 +204,8 @@ function defaultSettings() {
     promptPayId: '',
     receiptFooter: 'ขอบคุณที่อุดหนุนค่ะ ☕',
     sweetnessLevels: [25, 50, 75, 100],
-    line: { groupId: '', sale: true, void: true, lowStock: true },
+    // leadGroupId: where trial requests from /system go (empty = same group as sales).
+    line: { groupId: '', sale: true, void: true, lowStock: true, lead: true, leadGroupId: '' },
     selfOrder: { enabled: true, message: '' },
     // Stamp card: 1 stamp per cup, `cupsPerReward` stamps = 1 free cup worth up to `rewardMaxValue`.
     loyalty: { enabled: true, cupsPerReward: 9, rewardMaxValue: 40, excludeCategoryIds: [] },

@@ -18,6 +18,7 @@ app.set('trust proxy', 1);
 
 // ---------- LINE ----------
 const lineGroupId = () => getDb().settings.line?.groupId || process.env.LINE_GROUP_ID || '';
+const leadGroupId = () => getDb().settings.line?.leadGroupId || lineGroupId();
 const lineOn = (kind) => line.lineConfigured() && lineGroupId() && getDb().settings.line?.[kind] !== false;
 const todayTotals = () => buildReport(getDb(), parseRange()).totals;
 const lowStockList = () => getDb().ingredients.filter((i) => i.minQty > 0 && i.quantity <= i.minQty);
@@ -286,7 +287,7 @@ app.post('/api/public/leads', h((req) => {
   leadHits.set(ip, hits);
   getDb().leads.push(lead);
   save();
-  if (line.lineConfigured() && lineGroupId()) line.pushQuiet(lineGroupId(), [line.leadFlex(lead)]);
+  if (line.lineConfigured() && leadGroupId() && getDb().settings.line?.lead !== false) line.pushQuiet(leadGroupId(), [line.leadFlex(lead)]);
   return { ok: true };
 }));
 
@@ -1015,6 +1016,8 @@ app.put('/api/settings', need('settings'), h((req) => {
       sale: b.line.sale !== undefined ? !!b.line.sale : cur.sale !== false,
       void: b.line.void !== undefined ? !!b.line.void : cur.void !== false,
       lowStock: b.line.lowStock !== undefined ? !!b.line.lowStock : cur.lowStock !== false,
+      lead: b.line.lead !== undefined ? !!b.line.lead : cur.lead !== false,
+      leadGroupId: b.line.leadGroupId !== undefined ? str(b.line.leadGroupId, 40).replace(/[^A-Za-z0-9]/g, '') : cur.leadGroupId || '',
     };
   }
   if (Array.isArray(b.sweetnessLevels)) {
@@ -1047,6 +1050,13 @@ const lineSend = async (messages) => {
 // Async handlers: errors are passed to the error middleware explicitly.
 app.post('/api/line/test', need('settings'), (req, res, next) => {
   lineSend([{ type: 'text', text: `✅ ทดสอบการแจ้งเตือนจาก ${getDb().settings.shopName} โดย ${req.user.name}` }]).then((r) => res.json(r), next);
+});
+// Sample trial-request card, sent to the lead target group.
+app.post('/api/line/test-lead', need('settings'), (req, res, next) => {
+  if (!line.lineConfigured()) return next(new HttpError(400, 'ยังไม่ได้ตั้งค่า LINE token บนเซิร์ฟเวอร์'));
+  if (!leadGroupId()) return next(new HttpError(400, 'ยังไม่ได้ระบุ Group ID'));
+  const sample = { name: 'ตัวอย่าง (ทดสอบ)', shop: 'ร้านกาแฟตัวอย่าง', phone: '0800000000', lineId: '', note: 'ข้อความทดสอบการแจ้งเตือนผู้สนใจ', createdAt: now() };
+  line.push(leadGroupId(), [line.leadFlex(sample)]).then(() => res.json({ ok: true }), (e) => next(new HttpError(502, e.message)));
 });
 app.post('/api/line/summary', need('reports'), (req, res, next) => {
   lineSend([line.summaryFlex(buildReport(getDb(), parseRange()), getDb().settings.shopName)]).then((r) => res.json(r), next);

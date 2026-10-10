@@ -25,7 +25,7 @@ export default function Settings() {
   }, [s.data]);
 
   if (!f) return <Loading />;
-  const ln = { groupId: '', sale: true, void: true, lowStock: true, ...(f.line || {}) };
+  const ln = { groupId: '', sale: true, void: true, lowStock: true, lead: true, leadGroupId: '', ...(f.line || {}) };
   const setLine = (patch) => setF({ ...f, line: { ...ln, ...patch } });
 
   const save = async () => {
@@ -150,7 +150,29 @@ function LineCard({ ln, setLine, status, onSaveFirst }) {
         <Toggle checked={ln.sale} onChange={(v) => setLine({ sale: v })} label="แจ้งทุกครั้งที่ขาย (รายละเอียดบิล + ยอดขายวันนี้)" />
         <Toggle checked={ln.void} onChange={(v) => setLine({ void: v })} label="แจ้งเมื่อยกเลิกบิล" />
         <Toggle checked={ln.lowStock} onChange={(v) => setLine({ lowStock: v })} label="แจ้งเมื่อวัตถุดิบลดลงถึงจุดขั้นต่ำ" />
+        <Toggle checked={ln.lead} onChange={(v) => setLine({ lead: v })} label="แจ้งเมื่อมีคนขอทดลองใช้ระบบ (จากหน้า /system)" />
       </div>
+      {ln.lead && (
+        <div className="subcard">
+          <Field label="ส่งแจ้งเตือนผู้สนใจไปที่กลุ่ม" hint="เว้นว่าง = ส่งเข้ากลุ่มเดียวกับแจ้งยอดขาย · แนะนำให้แยกเป็นกลุ่มส่วนตัว เพราะพนักงานร้านไม่ต้องเห็น">
+            <input className="input" value={ln.leadGroupId} placeholder="ใช้กลุ่มเดียวกับแจ้งยอดขาย" onChange={(e) => setLine({ leadGroupId: e.target.value.trim() })} />
+          </Field>
+          {st?.groups?.length > 0 && (
+            <div className="chips">
+              <button className={`chip ${!ln.leadGroupId ? 'active' : ''}`} onClick={() => setLine({ leadGroupId: '' })}>กลุ่มเดียวกับยอดขาย</button>
+              {st.groups.map((g) => (
+                <button key={g.groupId} className={`chip ${ln.leadGroupId === g.groupId ? 'active' : ''}`} onClick={() => setLine({ leadGroupId: g.groupId })}>
+                  {g.name || g.groupId.slice(0, 10) + '…'}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="muted small">ถ้าต้องการกลุ่มส่วนตัว: สร้างกลุ่ม LINE ใหม่ (มีแค่คุณ) แล้วเชิญ LINE OA ของร้านเข้ากลุ่ม และพิมพ์อะไรก็ได้ 1 ข้อความ กลุ่มจะมาขึ้นให้เลือกด้านบน</p>
+          <button className="btn btn-sm btn-outline align-start" disabled={!!busy} onClick={() => send('/line/test-lead', 'ส่งตัวอย่างแจ้งเตือนผู้สนใจแล้ว')}>
+            <Icon name="check" size={16} /> ส่งตัวอย่างแจ้งเตือนผู้สนใจ
+          </button>
+        </div>
+      )}
       <div className="form-actions form-actions-left">
         <button className="btn btn-outline" disabled={!!busy} onClick={() => send('/line/test', 'ส่งข้อความทดสอบแล้ว')}><Icon name="check" /> ส่งข้อความทดสอบ</button>
         <button className="btn btn-outline" disabled={!!busy} onClick={() => send('/line/summary', 'ส่งสรุปยอดวันนี้แล้ว')}><Icon name="reports" /> ส่งสรุปยอดวันนี้</button>
