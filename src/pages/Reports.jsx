@@ -54,6 +54,14 @@ export default function Reports() {
                 <PlRow label="หัก ค่าใช้จ่ายดำเนินงาน" value={-t.expenses} muted />
                 <PlRow label={t.netProfit >= 0 ? 'กำไรสุทธิ' : 'ขาดทุนสุทธิ'} value={t.netProfit} total />
               </div>
+              {(t.capitalIn > 0) && (
+                <div className="pl-capital">
+                  <div className="pl-capital-title">เงินทุน (ไม่นับเป็นกำไร)</div>
+                  <PlRow label="เงินทุนเพิ่มเข้าช่วงนี้" value={t.capitalIn} />
+                  <PlRow label="ค่าใช้จ่ายดำเนินงาน" value={-t.expenses} muted />
+                  <PlRow label={t.expensesAfterCapital > 0 ? 'ค่าใช้จ่ายส่วนที่เกินเงินทุน' : 'เงินทุนเหลือหลังหักค่าใช้จ่าย'} value={-t.expensesAfterCapital} strong />
+                </div>
+              )}
               <div className="pl-foot muted small">
                 เฉลี่ย {baht(t.avgPerOrder)}/บิล · ลูกค้าใหม่ {t.newCustomers} · ลูกค้าเก่า {t.returningCustomers}
                 {t.voidCount > 0 && ` · ยกเลิก ${t.voidCount} บิล (${baht(t.voidAmount)})`}

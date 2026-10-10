@@ -471,6 +471,52 @@ app.get('/api/expenses-range', need('expenses'), h((req) => {
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
 }));
 
+// ---------- capital (owner money put into the shop) ----------
+// Not revenue: it never changes profit, it only shows how much of the expenses the owners' money covers.
+const cleanCapital = (b) => ({
+  date: /^\d{4}-\d{2}-\d{2}$/.test(b.date || '') ? b.date : localDate(new Date()),
+  source: str(b.source, 60) || 'เจ้าของร้าน',
+  note: str(b.note, 120),
+  amount: (() => {
+    const n = num(b.amount);
+    if (!(n > 0)) fail(400, 'กรุณากรอกจำนวนเงินทุน');
+    return n;
+  })(),
+});
+const sumBy = (arr) => round2(arr.reduce((s, x) => s + (Number(x.amount) || 0), 0));
+
+app.get('/api/capital', need('expenses'), h((req) => {
+  const db = getDb();
+  const range = parseRange(req.query.from, req.query.to);
+  const inR = (x) => x.date >= range.from && x.date <= range.to;
+  const capitalAll = sumBy(db.capital);
+  const expensesAll = sumBy(db.expenses);
+  return {
+    rows: db.capital.filter(inR).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
+    range: { capital: sumBy(db.capital.filter(inR)), expenses: sumBy(db.expenses.filter(inR)) },
+    allTime: { capital: capitalAll, expenses: expensesAll, balance: round2(capitalAll - expensesAll) },
+  };
+}));
+app.post('/api/capital', need('expenses'), h((req) => {
+  const t = now();
+  const row = { id: uid(), ...cleanCapital(req.body || {}), userName: req.user.name, createdAt: t, updatedAt: t };
+  getDb().capital.push(row);
+  save();
+  return row;
+}));
+app.put('/api/capital/:id', need('expenses'), h((req) => {
+  const row = getDb().capital.find((x) => x.id === req.params.id);
+  if (!row) fail(404, 'ไม่พบรายการ');
+  Object.assign(row, cleanCapital({ ...row, ...(req.body || {}) }), { updatedAt: now() });
+  save();
+  return row;
+}));
+app.delete('/api/capital/:id', need('expenses'), h((req) => {
+  getDb().capital = getDb().capital.filter((x) => x.id !== req.params.id);
+  save();
+  return { ok: true };
+}));
+
 // ---------- ingredients / stock ----------
 app.get('/api/ingredients', anyOf('stock', 'products'), h(() =>
   [...getDb().ingredients].sort((a, b) => a.name.localeCompare(b.name, 'th'))));

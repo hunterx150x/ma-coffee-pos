@@ -47,6 +47,7 @@ export function buildReport(db, range) {
   const sales = sum(paid, (o) => o.total);
   const cost = sum(paid, (o) => o.cost);
   const expenseTotal = sum(expenses, (e) => e.amount);
+  const capitalIn = sum((db.capital || []).filter((c) => c.date >= range.from && c.date <= range.to), (c) => c.amount);
   const grossProfit = round2(sales - cost);
 
   const totals = {
@@ -64,6 +65,9 @@ export function buildReport(db, range) {
     grossMargin: sales > 0 ? round2((grossProfit / sales) * 100) : 0,
     expenses: expenseTotal,
     netProfit: round2(grossProfit - expenseTotal),
+    // Owner capital is shown beside the P&L, never inside it.
+    capitalIn,
+    expensesAfterCapital: round2(expenseTotal - capitalIn),
     avgPerOrder: paid.length ? round2(sales / paid.length) : 0,
     voidCount: voided.length,
     voidAmount: sum(voided, (o) => o.total),
