@@ -849,3 +849,53 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .pl-capital { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px dashed var(--line-2); }
 .pl-capital-title { font-weight: 600; font-size: 13.5px; color: var(--ink-2); }
 .pl-capital .pl-row:last-child { border-bottom: 0; }
+
+/* ---------- sales sheet (paper-form style report) ---------- */
+.sheet-tools { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.sheet-tools-btns { display: flex; gap: 8px; margin-left: auto; }
+.sheet { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.sheet-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 12px; }
+.sheet-head h2 { font-size: 20px; }
+.sheet-head span { color: var(--ink-2); font-size: 14px; }
+.sheet-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 1400px) { .sheet-body { grid-template-columns: minmax(0, 1fr) 260px; } }
+/* Below the table on iPad / phone: the two boxes sit side by side when there is room. */
+@media (max-width: 1399px) { .sheet-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; } }
+.sheet-table-wrap { overflow-x: auto; }
+.sheet-table { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.sheet-table th, .sheet-table td { border: 1px solid #cfc3b6; padding: 5px 6px; }
+.sheet-table th { background: #f3ebe3; font-weight: 600; text-align: center; white-space: nowrap; }
+.sheet-table .num { text-align: right; white-space: nowrap; }
+.sheet-table .c-no { width: 36px; text-align: center; color: var(--muted); }
+.sheet-table .c-name { min-width: 130px; }
+.sheet-table .c-top { font-weight: 500; font-size: 12px; max-width: 80px; white-space: normal; }
+.sheet-sec td { background: #faf6f1; font-weight: 700; color: var(--primary-600); }
+.sheet-subtotal td { background: #fcfaf7; font-weight: 600; font-size: 13px; }
+.sheet-table tfoot td { font-weight: 700; font-size: 14.5px; background: #f3ebe3; }
+.sheet-zero td { color: #b9aa9b; }
+.sheet-side { display: flex; flex-direction: column; gap: 12px; }
+.sheet-box { border: 1px solid #cfc3b6; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.sheet-box-title { font-weight: 700; margin-bottom: 4px; }
+.sheet-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+.sheet-sub { padding-left: 12px; font-size: 12.5px; color: var(--ink-2); }
+.sheet-line { border-top: 1px dashed #cfc3b6; margin-top: 4px; padding-top: 6px; }
+.sheet-grand { border-top: 2px solid var(--ink); margin-top: 4px; padding-top: 6px; font-size: 16px; }
+.sheet-free { padding: 4px 0; border-bottom: 1px dotted #e3d8cc; }
+.sheet-free:last-child { border-bottom: 0; }
+@media print {
+  body.printing-sheet { background: #fff; }
+  body.printing-sheet .sidebar, body.printing-sheet .topbar, body.printing-sheet .bottombar, body.printing-sheet .page-head,
+  body.printing-sheet .no-print, body.printing-sheet .toasts, body.printing-sheet .nav-scrim { display: none !important; }
+  body.printing-sheet .main { margin: 0; }
+  body.printing-sheet .content { padding: 0; max-width: none; }
+  body.printing-sheet .sheet { box-shadow: none; border: 0; padding: 0; margin: 0; break-after: page; }
+  body.printing-sheet .sheet:last-child { break-after: auto; }
+  body.printing-sheet .sheet-body { grid-template-columns: minmax(0, 1fr) 62mm; }
+  body.printing-sheet .sheet-table { font-size: 10.5px; }
+  body.printing-sheet .sheet-table th, body.printing-sheet .sheet-table td { padding: 2px 4px; }
+  body.printing-sheet .sheet-box { font-size: 11px; }
+  body.printing-sheet .sheet-table tr { break-inside: avoid; }
+  body.printing-sheet .sheet-subtotal td, body.printing-sheet .sheet-table tfoot td { font-size: 11px; }
+  body.printing-sheet .sheet-side { display: flex; }
+  body.printing-sheet .sheet-grand { font-size: 13px; }
+}

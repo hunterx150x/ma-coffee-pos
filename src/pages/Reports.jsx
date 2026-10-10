@@ -3,10 +3,12 @@ import { api } from '../api.js';
 import { baht, num, presetRange, thDate, downloadCsv } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Icon, Loading, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
 import { summaryRows, detailRows } from '../reportExport.js';
+import SalesSheet from './SalesSheet.jsx';
 
 export default function Reports() {
   const [range, setRange] = useState(presetRange('today'));
   const [tab, setTab] = useState('menu');
+  const [view, setView] = useState('dashboard');
   const { toast } = useUi();
   const rep = useAsync(() => api('/reports/summary', { query: range }), [range.from, range.to]);
   const r = rep.data;
@@ -42,9 +44,12 @@ export default function Reports() {
           </>
         )}
       </PageHead>
-      <div className="card filters"><DateRange value={range} onChange={setRange} /></div>
+      <div className="card filters no-print">
+        <Tabs value={view} onChange={setView} tabs={[{ key: 'dashboard', label: 'ภาพรวม & กำไร' }, { key: 'sheet', label: 'ใบสรุปยอดขาย (แบบฟอร์ม)' }]} />
+        <DateRange value={range} onChange={setRange} />
+      </div>
 
-      {rep.loading && !r ? <Loading /> : rep.error ? <ErrorBox error={rep.error} onRetry={rep.reload} /> : r && (
+      {view === 'sheet' ? <SalesSheet range={range} /> : rep.loading && !r ? <Loading /> : rep.error ? <ErrorBox error={rep.error} onRetry={rep.reload} /> : r && (
         <>
           <div className="kpis">
             <Kpi label="ยอดขายสุทธิ" value={baht(t.sales)} sub={`${num(t.orders)} บิล · ${num(t.cups)} แก้ว`} hero />
