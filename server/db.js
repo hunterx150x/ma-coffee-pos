@@ -11,12 +11,12 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 export const COLLECTIONS = [
   'users', 'customers', 'categories', 'menuItems', 'toppings', 'discounts',
-  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves', 'leads', 'capital',
+  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves', 'leads', 'capital', 'auditLogs',
 ];
 // Collections that grow with every sale are stored one row per month in Postgres,
 // so a new sale rewrites only the current month instead of the whole history.
 // Transfer slips (images) get their own monthly rows so queue updates never rewrite them.
-const PARTITIONED = ['orders', 'stockMoves', 'queues', 'slips', 'pointMoves'];
+const PARTITIONED = ['orders', 'stockMoves', 'queues', 'slips', 'pointMoves', 'auditLogs'];
 const SINGLE_KEYS = [...COLLECTIONS.filter((c) => !PARTITIONED.includes(c)), 'settings', 'meta'];
 
 let db = null;
@@ -91,6 +91,11 @@ function migrate(d) {
       if (u.role === 'staff' && (u.permissions || []).includes('pos') && !u.permissions.includes('queue')) u.permissions.push('queue');
     }
     done.add('queue-permission');
+  }
+  if (!done.has('audit-v1')) {
+    // Extra password for the owner-only activity log (kept hashed, outside backups).
+    d.meta.auditPasswordHash = d.meta.auditPasswordHash || hashPassword(process.env.AUDIT_PASSWORD || '252525');
+    done.add('audit-v1');
   }
   if (!done.has('outside-cats-toppings-v1')) {
     // Same counter / outside split for categories and toppings, starting from their current state.

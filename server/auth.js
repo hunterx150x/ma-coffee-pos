@@ -18,8 +18,8 @@ export function verifyPassword(password, stored) {
 
 const b64 = (s) => Buffer.from(s).toString('base64url');
 
-export function signToken(payload, secret) {
-  const body = b64(JSON.stringify({ ...payload, exp: Date.now() + TOKEN_TTL_MS }));
+export function signToken(payload, secret, ttlMs = TOKEN_TTL_MS) {
+  const body = b64(JSON.stringify({ ...payload, exp: Date.now() + ttlMs }));
   const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url');
   return `${body}.${sig}`;
 }

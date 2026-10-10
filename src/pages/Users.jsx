@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
-import { initial } from '../utils.js';
+import { initial, thDateTime } from '../utils.js';
 import { PERMISSIONS, DEFAULT_STAFF_PERMISSIONS, ROLES } from '../../shared/permissions.js';
 import { Empty, Field, Icon, Loading, Modal, PageHead, Toggle, useAsync, useUi } from '../components/ui.jsx';
 
@@ -58,7 +58,7 @@ export default function Users() {
               <div className="avatar">{initial(u.name)}</div>
               <div className="user-card-main">
                 <div><b>{u.name}</b> {u.id === me.id && <span className="muted small">(คุณ)</span>}</div>
-                <div className="muted small">@{u.username}</div>
+                <div className="muted small">@{u.username} · {u.lastLoginAt ? `เข้าใช้ล่าสุด ${thDateTime(u.lastLoginAt)}` : 'ยังไม่เคยเข้าใช้ (ตั้งแต่เริ่มบันทึก)'}</div>
                 <div className="perm-pills">
                   {u.role === 'owner'
                     ? <span className="pill">ทุกเมนู</span>

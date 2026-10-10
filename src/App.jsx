@@ -15,6 +15,7 @@ import Expenses from './pages/Expenses.jsx';
 import Customers from './pages/Customers.jsx';
 import Users from './pages/Users.jsx';
 import Settings from './pages/Settings.jsx';
+import AuditLog from './pages/AuditLog.jsx';
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -29,6 +30,8 @@ export const ROUTES = [
   { key: 'expenses', label: 'ค่าใช้จ่าย', icon: 'expenses', perm: 'expenses', component: Expenses },
   { key: 'customers', label: 'ลูกค้า', icon: 'customers', perm: 'customers', component: Customers },
   { key: 'users', label: 'ผู้ใช้ & สิทธิ์', icon: 'users', perm: 'users', component: Users },
+  // 'users' is owner-only, so the activity log is too (plus its own password).
+  { key: 'audit', label: 'ประวัติการใช้งาน', icon: 'history', perm: 'users', component: AuditLog },
   { key: 'settings', label: 'ตั้งค่าร้าน', icon: 'settings', perm: 'settings', component: Settings },
 ];
 
@@ -88,6 +91,8 @@ export default function App() {
   }, [user]);
 
   const logout = () => {
+    api('/auth/logout', { method: 'POST' }).catch(() => {}); // recorded in the activity log
+    try { sessionStorage.removeItem('ma_audit_unlock'); } catch { /* ignore */ }
     setToken(null);
     setUser(null);
     go('');

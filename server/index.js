@@ -10,6 +10,7 @@ import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable 
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import * as line from './line.js';
 import * as events from './events.js';
+import { audit, auditMutations, describeChanges } from './audit.js';
 
 await load();
 
@@ -95,7 +96,8 @@ const publicUser = (u) => {
 function auth(req, _res, next) {
   const header = req.headers.authorization || '';
   const payload = verifyToken(header.replace(/^Bearer /, ''), getDb().meta.secret);
-  const user = payload && getDb().users.find((u) => u.id === payload.uid && u.active);
+  // Special-purpose tokens (e.g. the activity-log unlock) carry an `aud` and are never valid as a login.
+  const user = payload && !payload.aud && getDb().users.find((u) => u.id === payload.uid && u.active);
   if (!user || (user.tokenVersion || 0) !== (payload.tv || 0)) return next(new HttpError(401, 'กรุณาเข้าสู่ระบบ'));
   req.user = user;
   next();
@@ -109,17 +111,29 @@ app.post('/api/auth/login', h((req) => {
   const { username, password } = req.body || {};
   const ip = req.ip;
   const rec = loginFails.get(ip);
-  if (rec && rec.until > Date.now() && rec.count >= LOGIN_MAX_FAILS) fail(429, 'ลองเข้าสู่ระบบผิดหลายครั้งเกินไป กรุณารอ 15 นาที');
-  const user = getDb().users.find((u) => u.username.toLowerCase() === String(username || '').trim().toLowerCase());
+  const tried = String(username || '').trim().slice(0, 40);
+  const failLog = (detail) => { audit(req, { category: 'เข้าสู่ระบบ', action: 'เข้าสู่ระบบไม่สำเร็จ', detail, result: 'fail', level: 'warn', actor: tried || '(ไม่ระบุชื่อ)' }); save(); };
+  if (rec && rec.until > Date.now() && rec.count >= LOGIN_MAX_FAILS) {
+    failLog('ถูกล็อก 15 นาที (ใส่ผิดหลายครั้ง)');
+    fail(429, 'ลองเข้าสู่ระบบผิดหลายครั้งเกินไป กรุณารอ 15 นาที');
+  }
+  const user = getDb().users.find((u) => u.username.toLowerCase() === tried.toLowerCase());
   if (!user || !verifyPassword(password || '', user.passwordHash)) {
     const r = rec && rec.until > Date.now() ? rec : { count: 0, until: Date.now() + LOGIN_WINDOW_MS };
     r.count += 1;
     loginFails.set(ip, r);
+    failLog(user ? `รหัสผ่านไม่ถูกต้อง (ครั้งที่ ${r.count})` : `ไม่มีชื่อผู้ใช้นี้ (ครั้งที่ ${r.count})`);
     fail(401, 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
   }
   loginFails.delete(ip);
-  if (!user.active) fail(403, 'บัญชีนี้ถูกระงับการใช้งาน');
+  if (!user.active) {
+    failLog('บัญชีถูกระงับ');
+    fail(403, 'บัญชีนี้ถูกระงับการใช้งาน');
+  }
   user.tokenVersion = user.tokenVersion || 0;
+  user.lastLoginAt = now();
+  audit({ user, ip: req.ip, headers: req.headers }, { category: 'เข้าสู่ระบบ', action: 'เข้าสู่ระบบ', detail: `@${user.username}` });
+  save();
   return { token: signToken({ uid: user.id, tv: user.tokenVersion }, getDb().meta.secret), user: publicUser(user) };
 }));
 
@@ -203,6 +217,8 @@ app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
     name, note: b.note, items, staffId: null, staffName: 'ลูกค้าสั่งเอง (QR)', source: 'customer',
     customer: member ? { type: 'old', id: member.id } : null,
   });
+  audit(req, { category: 'คิว', action: 'ลูกค้าสั่งผ่าน QR', detail: `คิว ${q.queueNo} ${name} · ฿${q.total} · ${q.cups} แก้ว${member ? ' (สมาชิก)' : ''}`, actor: `ลูกค้า: ${name}` });
+  save();
   return { token: q.publicToken, queueNo: q.queueNo };
 }));
 
@@ -265,6 +281,8 @@ app.post('/api/public/queues/:token/paid', h((req) => {
   markDirty('queues', q.createdAt);
   save();
   events.broadcast('queues', { id: q.id, status: q.status });
+  audit(req, { category: 'คิว', action: 'ลูกค้าแจ้งโอนเงิน', detail: `คิว ${q.queueNo} ${q.name} · ฿${q.total}${slipId ? ' (แนบสลิป)' : ''}`, actor: `ลูกค้า: ${q.name}` });
+  save();
   return { ok: true };
 }));
 
@@ -291,6 +309,8 @@ app.post('/api/public/leads', h((req) => {
   getDb().leads.push(lead);
   save();
   if (line.lineConfigured() && leadGroupId() && getDb().settings.line?.lead !== false) line.pushQuiet(leadGroupId(), [line.leadFlex(lead)]);
+  audit(req, { category: 'ระบบขาย', action: 'มีผู้ขอทดลองใช้ระบบ', detail: `${lead.shop} · ${lead.name} · ${lead.phone}`, actor: `ผู้สนใจ: ${lead.name}` });
+  save();
   return { ok: true };
 }));
 
@@ -303,6 +323,74 @@ app.get('/api/events', (req, _res, next) => {
 }, auth, anyOf('queue', 'pos'), (req, res) => events.subscribe(req, res));
 
 app.use('/api', auth);
+app.use('/api', auditMutations);
+
+app.post('/api/auth/logout', h(() => ({ ok: true })));
+
+// ---------- activity log (owner only + extra password) ----------
+const AUDIT_TTL_MS = 30 * 60 * 1000;
+const auditUnlockFails = new Map();
+const auditGate = (req, _res, next) => {
+  if (req.user.role !== 'owner') return next(new HttpError(403, 'เฉพาะเจ้าของร้านเท่านั้น'));
+  const p = verifyToken(String(req.headers['x-audit-token'] || ''), getDb().meta.secret);
+  if (!p || p.aud !== 'audit' || p.uid !== req.user.id) return next(new HttpError(423, 'กรุณาใส่รหัสผ่านเพื่อดูประวัติการใช้งาน'));
+  next();
+};
+app.post('/api/audit/unlock', h((req, res) => {
+  res.locals.auditSkip = true;
+  if (req.user.role !== 'owner') fail(403, 'เฉพาะเจ้าของร้านเท่านั้น');
+  const rec = auditUnlockFails.get(req.user.id);
+  if (rec && rec.until > Date.now() && rec.count >= 5) fail(429, 'ใส่รหัสผิดหลายครั้ง กรุณารอ 15 นาที');
+  if (!verifyPassword(String(req.body?.password || ''), getDb().meta.auditPasswordHash)) {
+    const r = rec && rec.until > Date.now() ? rec : { count: 0, until: Date.now() + 15 * 60 * 1000 };
+    r.count += 1;
+    auditUnlockFails.set(req.user.id, r);
+    audit(req, { category: 'ระบบ', action: 'ใส่รหัสดูประวัติไม่ถูกต้อง', detail: `ครั้งที่ ${r.count}`, result: 'fail', level: 'warn' });
+    save();
+    fail(403, 'รหัสผ่านไม่ถูกต้อง'); // not 401: that would log the owner out of the app
+  }
+  auditUnlockFails.delete(req.user.id);
+  audit(req, { category: 'ระบบ', action: 'เปิดดูประวัติการใช้งาน' });
+  save();
+  return { token: signToken({ aud: 'audit', uid: req.user.id }, getDb().meta.secret, AUDIT_TTL_MS), expiresInMs: AUDIT_TTL_MS };
+}));
+app.post('/api/audit/password', auditGate, h((req, res) => {
+  res.locals.auditSkip = true;
+  const { current, next: nextPw } = req.body || {};
+  if (!verifyPassword(String(current || ''), getDb().meta.auditPasswordHash)) fail(400, 'รหัสผ่านปัจจุบันไม่ถูกต้อง');
+  if (!nextPw || String(nextPw).length < 4) fail(400, 'รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร');
+  getDb().meta.auditPasswordHash = hashPassword(String(nextPw));
+  audit(req, { category: 'ระบบ', action: 'เปลี่ยนรหัสผ่านดูประวัติ', level: 'warn' });
+  save();
+  return { ok: true };
+}));
+const AUDIT_PAGE_SIZES = [50, 100, 200, 500];
+app.get('/api/audit', auditGate, h((req) => {
+  const q = req.query;
+  const range = parseRange(q.from, q.to);
+  let list = getDb().auditLogs.filter((x) => inRange(x.createdAt, range));
+  const users = [...new Set(list.map((x) => x.userName))].sort((a, b) => a.localeCompare(b, 'th'));
+  const categories = [...new Set(list.map((x) => x.category))].sort((a, b) => a.localeCompare(b, 'th'));
+  const summary = {
+    logins: list.filter((x) => x.action === 'เข้าสู่ระบบ').length,
+    failedLogins: list.filter((x) => x.action === 'เข้าสู่ระบบไม่สำเร็จ').length,
+    voids: list.filter((x) => x.action === 'ยกเลิกบิล').length,
+    deletes: list.filter((x) => x.action.startsWith('ลบ')).length,
+    warnings: list.filter((x) => x.level === 'warn').length,
+  };
+  if (q.user) list = list.filter((x) => x.userName === q.user);
+  if (q.category) list = list.filter((x) => x.category === q.category);
+  if (q.only === 'warn') list = list.filter((x) => x.level === 'warn');
+  if (q.only === 'fail') list = list.filter((x) => x.result === 'fail');
+  const term = str(q.q, 60).toLowerCase();
+  if (term) list = list.filter((x) => `${x.action} ${x.detail} ${x.userName} ${x.ip} ${x.device}`.toLowerCase().includes(term));
+  const perPage = AUDIT_PAGE_SIZES.includes(Number(q.perPage)) ? Number(q.perPage) : 50;
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const page = Math.min(pages, Math.max(1, Math.floor(Number(q.page) || 1)));
+  const end = total - (page - 1) * perPage;
+  return { rows: list.slice(Math.max(0, end - perPage), end).reverse(), total, page, pages, perPage, users, categories, summary };
+}));
 
 app.get('/api/auth/me', h((req) => ({ user: publicUser(req.user) })));
 
@@ -352,25 +440,30 @@ app.get('/api/catalog', h((req) => catalog(req.user)));
 // ---------- generic CRUD ----------
 function crud(route, collection, perm, clean, { canDelete, view = (x) => x } = {}) {
   app.get(`/api/${route}`, anyOf(perm, 'pos'), h(() => [...getDb()[collection]].sort(bySort).map(view)));
-  app.post(`/api/${route}`, need(perm), h((req) => {
+  const label = (r) => r.name || r.description || '';
+  app.post(`/api/${route}`, need(perm), h((req, res) => {
     const t = now();
     const row = { id: uid(), active: true, ...clean(req.body || {}), createdAt: t, updatedAt: t };
     getDb()[collection].push(row);
     save();
+    res.locals.audit = [label(row), row.price != null ? `ราคา ${row.price}` : '', row.amount != null ? `${row.amount} บาท` : ''].filter(Boolean).join(' · ');
     return view(row);
   }));
-  app.put(`/api/${route}/:id`, need(perm), h((req) => {
+  app.put(`/api/${route}/:id`, need(perm), h((req, res) => {
     const row = getDb()[collection].find((x) => x.id === req.params.id);
     if (!row) fail(404, 'ไม่พบข้อมูล');
+    const before = { ...row };
     Object.assign(row, clean({ ...row, ...(req.body || {}) }), { updatedAt: now() });
     save();
+    res.locals.audit = `${label(row)}: ${describeChanges(before, row) || 'ไม่มีการเปลี่ยนแปลง'}`;
     return view(row);
   }));
-  app.delete(`/api/${route}/:id`, need(perm), h((req) => {
+  app.delete(`/api/${route}/:id`, need(perm), h((req, res) => {
     const list = getDb()[collection];
     const idx = list.findIndex((x) => x.id === req.params.id);
     if (idx < 0) fail(404, 'ไม่พบข้อมูล');
     if (canDelete) canDelete(list[idx]);
+    res.locals.audit = [label(list[idx]), list[idx].amount != null ? `${list[idx].amount} บาท` : ''].filter(Boolean).join(' · ');
     list.splice(idx, 1);
     save();
     return { ok: true };
@@ -510,14 +603,18 @@ app.post('/api/capital', need('expenses'), h((req) => {
   save();
   return row;
 }));
-app.put('/api/capital/:id', need('expenses'), h((req) => {
+app.put('/api/capital/:id', need('expenses'), h((req, res) => {
   const row = getDb().capital.find((x) => x.id === req.params.id);
   if (!row) fail(404, 'ไม่พบรายการ');
+  const before = { ...row };
   Object.assign(row, cleanCapital({ ...row, ...(req.body || {}) }), { updatedAt: now() });
+  res.locals.audit = `${row.source} ${row.amount} บาท: ${describeChanges(before, row) || 'ไม่มีการเปลี่ยนแปลง'}`;
   save();
   return row;
 }));
-app.delete('/api/capital/:id', need('expenses'), h((req) => {
+app.delete('/api/capital/:id', need('expenses'), h((req, res) => {
+  const row = getDb().capital.find((x) => x.id === req.params.id);
+  if (row) res.locals.audit = `${row.source} ${row.amount} บาท (${row.date})`;
   getDb().capital = getDb().capital.filter((x) => x.id !== req.params.id);
   save();
   return { ok: true };
@@ -542,16 +639,19 @@ app.post('/api/ingredients', need('stock'), h((req) => {
   save();
   return row;
 }));
-app.put('/api/ingredients/:id', need('stock'), h((req) => {
+app.put('/api/ingredients/:id', need('stock'), h((req, res) => {
   const row = getDb().ingredients.find((x) => x.id === req.params.id);
   if (!row) fail(404, 'ไม่พบข้อมูล');
+  const before = { ...row };
   Object.assign(row, cleanIngredient({ ...row, ...(req.body || {}) }), { updatedAt: now() });
+  res.locals.audit = `${row.name}: ${describeChanges(before, row) || 'ไม่มีการเปลี่ยนแปลง'}`;
   save();
   return row;
 }));
-app.delete('/api/ingredients/:id', need('stock'), h((req) => {
+app.delete('/api/ingredients/:id', need('stock'), h((req, res) => {
   const db = getDb();
   const id = req.params.id;
+  res.locals.audit = db.ingredients.find((x) => x.id === id)?.name;
   const used = [...db.menuItems, ...db.toppings].filter((m) => (m.recipe || []).some((r) => r.ingredientId === id));
   if (used.length) fail(400, `วัตถุดิบนี้ถูกใช้ในสูตร: ${used.map((u) => u.name).join(', ')}`);
   db.ingredients = db.ingredients.filter((x) => x.id !== id);
@@ -667,16 +767,20 @@ app.post('/api/customers/:id/points', h((req) => {
   save();
   return c;
 }));
-app.put('/api/customers/:id', need('customers'), h((req) => {
+app.put('/api/customers/:id', need('customers'), h((req, res) => {
   const row = getDb().customers.find((c) => c.id === req.params.id);
   if (!row) fail(404, 'ไม่พบลูกค้า');
   if (req.body?.phone !== undefined) assertPhoneFree(str(req.body.phone, 20), row.id);
+  const before = { ...row };
   Object.assign(row, cleanCustomer({ ...row, ...req.body }), { updatedAt: now() });
+  res.locals.audit = `${row.name}: ${describeChanges(before, row) || 'ไม่มีการเปลี่ยนแปลง'}`;
   save();
   return row;
 }));
-app.delete('/api/customers/:id', need('customers'), h((req) => {
-  getDb().customers = getDb().customers.filter((c) => c.id !== req.params.id);
+app.delete('/api/customers/:id', need('customers'), h((req, res) => {
+  const c = getDb().customers.find((x) => x.id === req.params.id);
+  if (c) res.locals.audit = `${c.name}${c.phone ? ` (${c.phone})` : ''} · แต้ม ${c.points || 0}`;
+  getDb().customers = getDb().customers.filter((x) => x.id !== req.params.id);
   save();
   return { ok: true };
 }));
@@ -1002,10 +1106,11 @@ app.post('/api/users', ownerOnly, h((req) => {
   save();
   return publicUser(user);
 }));
-app.put('/api/users/:id', ownerOnly, h((req) => {
+app.put('/api/users/:id', ownerOnly, h((req, res) => {
   const u = getDb().users.find((x) => x.id === req.params.id);
   if (!u) fail(404, 'ไม่พบผู้ใช้');
   const b = req.body || {};
+  const before = { ...u };
   const role = b.role === 'owner' ? 'owner' : b.role === 'staff' ? 'staff' : u.role;
   const active = b.active === undefined ? u.active : !!b.active;
   if (u.role === 'owner' && (role !== 'owner' || !active) && ownersLeft(u.id) === 0) fail(400, 'ต้องมีเจ้าของร้านที่ใช้งานอยู่อย่างน้อย 1 คน');
@@ -1026,6 +1131,9 @@ app.put('/api/users/:id', ownerOnly, h((req) => {
   u.role = role;
   u.active = active;
   u.updatedAt = now();
+  const changes = [describeChanges(before, u), b.password ? 'ตั้งรหัสผ่านใหม่' : '', before.active !== u.active ? (u.active ? 'เปิดใช้งานบัญชี' : 'ระงับบัญชี') : '']
+    .filter(Boolean).join(', ');
+  res.locals.audit = `${u.name} (@${u.username}): ${changes || 'ไม่มีการเปลี่ยนแปลง'}`;
   save();
   return publicUser(u);
 }));
@@ -1034,6 +1142,7 @@ app.delete('/api/users/:id', ownerOnly, h((req) => {
   if (!u) fail(404, 'ไม่พบผู้ใช้');
   if (u.id === req.user.id) fail(400, 'ไม่สามารถลบบัญชีของตัวเองได้');
   if (u.role === 'owner' && ownersLeft(u.id) === 0) fail(400, 'ต้องมีเจ้าของร้านอย่างน้อย 1 คน');
+  res.locals.audit = `${u.name} (@${u.username}, ${u.role === 'owner' ? 'เจ้าของร้าน' : 'พนักงาน'})`;
   getDb().users = getDb().users.filter((x) => x.id !== u.id);
   save();
   return { ok: true };
@@ -1041,8 +1150,11 @@ app.delete('/api/users/:id', ownerOnly, h((req) => {
 
 // ---------- settings & backup ----------
 app.get('/api/settings', h(() => getDb().settings));
-app.put('/api/settings', need('settings'), h((req) => {
+app.put('/api/settings', need('settings'), h((req, res) => {
   const b = req.body || {};
+  const SECTION = { shopName: 'ชื่อร้าน', address: 'ที่อยู่', phone: 'เบอร์', promptPayId: 'พร้อมเพย์', receiptFooter: 'ท้ายใบเสร็จ', sweetnessLevels: 'ความหวาน',
+    selfOrder: 'QR สั่งเอง', line: 'LINE', loyalty: 'สะสมแต้ม', contacts: 'ช่องทางติดต่อ' };
+  const prevSettings = JSON.parse(JSON.stringify(getDb().settings));
   const s = getDb().settings;
   if (b.shopName !== undefined) s.shopName = str(b.shopName, 60) || 'MA Coffee';
   if (b.address !== undefined) s.address = str(b.address, 200);
@@ -1088,6 +1200,7 @@ app.put('/api/settings', need('settings'), h((req) => {
     const lv = [...new Set(b.sweetnessLevels.map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n <= 200))].sort((a, b2) => a - b2);
     if (lv.length) s.sweetnessLevels = lv;
   }
+  res.locals.audit = Object.keys(SECTION).filter((k) => JSON.stringify(prevSettings[k]) !== JSON.stringify(s[k])).map((k) => SECTION[k]).join(', ') || 'ไม่มีการเปลี่ยนแปลง';
   save();
   return s;
 }));
@@ -1127,13 +1240,17 @@ app.post('/api/line/summary', need('reports'), (req, res, next) => {
 });
 
 app.get('/api/leads', ownerOnly, h(() => [...getDb().leads].reverse()));
-app.delete('/api/leads/:id', ownerOnly, h((req) => {
+app.delete('/api/leads/:id', ownerOnly, h((req, res) => {
+  const l = getDb().leads.find((x) => x.id === req.params.id);
+  if (l) res.locals.audit = `${l.shop} · ${l.name}`;
   getDb().leads = getDb().leads.filter((x) => x.id !== req.params.id);
   save();
   return { ok: true };
 }));
 
-app.get('/api/backup', ownerOnly, h((_req, res) => {
+app.get('/api/backup', ownerOnly, h((req, res) => {
+  audit(req, { category: 'ตั้งค่า', action: 'ดาวน์โหลดไฟล์สำรองข้อมูล', level: 'warn' });
+  save();
   const { meta, ...data } = getDb();
   res.setHeader('Content-Disposition', `attachment; filename="ma-coffee-backup-${localDate(new Date())}.json"`);
   res.json(data);
@@ -1143,6 +1260,7 @@ app.post('/api/restore', ownerOnly, h((req) => {
   if (!Array.isArray(b.users) || !b.users.some((u) => u.role === 'owner')) fail(400, 'ไฟล์สำรองข้อมูลไม่ถูกต้อง');
   const next = {};
   for (const c of COLLECTIONS) next[c] = Array.isArray(b[c]) ? b[c] : [];
+  next.auditLogs = getDb().auditLogs; // a restore must never erase the activity log
   next.settings = b.settings || {};
   replaceDb(next);
   return { ok: true };

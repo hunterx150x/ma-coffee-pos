@@ -16,13 +16,13 @@ export const setToken = (t) => {
   }
 };
 
-export async function api(path, { method = 'GET', body, query } = {}) {
+export async function api(path, { method = 'GET', body, query, headers: extra } = {}) {
   let url = `/api${path}`;
   if (query) {
     const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== ''));
     if ([...qs].length) url += `?${qs}`;
   }
-  const headers = {};
+  const headers = { ...(extra || {}) };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
