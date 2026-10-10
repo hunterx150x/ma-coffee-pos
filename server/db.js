@@ -183,6 +183,14 @@ function defaultSettings() {
     sweetnessLevels: [25, 50, 75, 100],
     line: { groupId: '', sale: true, void: true, lowStock: true },
     selfOrder: { enabled: true, message: '' },
+    // Shown as icons on the customer's queue page. Phone comes from `phone` above.
+    contacts: {
+      facebook: 'https://www.facebook.com/macoffeeandsnacks/',
+      instagram: 'https://www.instagram.com/macoffee2023',
+      line: '',
+      tiktok: '',
+      map: '',
+    },
     lowStockAlert: true,
   };
 }

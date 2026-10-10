@@ -5,6 +5,7 @@ import { today } from '../utils.js';
 import { Field, Icon, Loading, PageHead, Toggle, useAsync, useUi } from '../components/ui.jsx';
 import { thDateTime } from '../utils.js';
 import QRCode from 'qrcode';
+import { CONTACTS, ContactIcon } from '../components/Contacts.jsx';
 
 export default function Settings() {
   const { user } = useAuth();
@@ -71,7 +72,7 @@ export default function Settings() {
           <h3 className="card-title">ข้อมูลร้าน (แสดงบนใบเสร็จ)</h3>
           <Field label="ชื่อร้าน"><input className="input" value={f.shopName} onChange={(e) => setF({ ...f, shopName: e.target.value })} /></Field>
           <Field label="ที่อยู่"><input className="input" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
-          <Field label="เบอร์โทร"><input className="input" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
+          <Field label="เบอร์โทร" hint="แสดงเป็นปุ่มโทรหาร้านในหน้าคิวของลูกค้าด้วย"><input className="input" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
           <Field label="ข้อความท้ายใบเสร็จ"><input className="input" value={f.receiptFooter} onChange={(e) => setF({ ...f, receiptFooter: e.target.value })} /></Field>
         </div>
         <div className="card form">
@@ -83,6 +84,7 @@ export default function Settings() {
             <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
           </Field>
         </div>
+        <ContactsCard contacts={f.contacts || {}} setContacts={(contacts) => setF({ ...f, contacts })} />
         <SelfOrderCard so={{ enabled: true, message: '', ...(f.selfOrder || {}) }} setSo={(so) => setF({ ...f, selfOrder: so })} />
         <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />
         {user.role === 'owner' && (
@@ -212,3 +214,30 @@ function SelfOrderCard({ so, setSo }) {
     </div>
   );
 }
+
+const CONTACT_HINTS = {
+  facebook: 'https://www.facebook.com/ชื่อเพจ',
+  instagram: 'https://www.instagram.com/ชื่อบัญชี',
+  line: 'https://lin.ee/xxxx (ลิงก์เพิ่มเพื่อน LINE OA)',
+  tiktok: 'https://www.tiktok.com/@ชื่อบัญชี',
+  map: 'https://maps.app.goo.gl/xxxx',
+};
+
+/** Social / contact links shown as icons on the customer's queue page. Empty = hidden. */
+function ContactsCard({ contacts, setContacts }) {
+  return (
+    <div className="card form">
+      <h3 className="card-title">ช่องทางติดต่อ (แสดงในหน้าคิวของลูกค้า)</h3>
+      <p className="muted small">เว้นว่างช่องที่ไม่ใช้ ไอคอนนั้นจะไม่แสดง · บนมือถือที่มีแอปติดตั้งไว้ ลิงก์จะเปิดในแอปให้อัตโนมัติ</p>
+      {CONTACTS.map((c) => (
+        <Field key={c.key} label={(
+          <span className="contact-field-label"><span className="contact-icon contact-icon-sm" style={{ background: c.color }}><ContactIcon name={c.key} size={16} /></span>{c.label}</span>
+        )}>
+          <input className="input" type="url" inputMode="url" value={contacts[c.key] || ''} placeholder={CONTACT_HINTS[c.key]}
+            onChange={(e) => setContacts({ ...contacts, [c.key]: e.target.value.trim() })} />
+        </Field>
+      ))}
+    </div>
+  );
+}
+

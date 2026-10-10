@@ -5,6 +5,7 @@ import { priceLine, summarize } from '../../shared/pricing.js';
 import { baht, sweetLabel, sweetDesc, promptPayPayload } from '../utils.js';
 import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
 import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
+import ContactBar from '../components/Contacts.jsx';
 
 const CART_KEY = 'ma_order_cart';
 const MY_QUEUES_KEY = 'ma_my_queues';
@@ -432,6 +433,7 @@ function TrackQueue({ token, go }) {
         )}
         <button className="btn btn-outline btn-lg btn-block cx-more" onClick={() => go('/order')}><Icon name="plus" /> สั่งเครื่องดื่มเพิ่ม</button>
         <p className="muted small cx-hint">เก็บหน้านี้ไว้เพื่อดูสถานะคิว หรือกลับมาที่ลิงก์เดิมได้ทุกเมื่อ</p>
+        <ContactBar contacts={q.shop.contacts} phone={q.shop.phone} />
       </div>
     </>
   );

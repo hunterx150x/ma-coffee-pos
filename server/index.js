@@ -132,6 +132,7 @@ app.get('/api/menu-image/:id', (req, res) => {
   res.end(Buffer.from(match[2], 'base64'));
 });
 
+const CONTACT_KEYS = ['facebook', 'instagram', 'line', 'tiktok', 'map'];
 const selfOrderOpen = () => getDb().settings.selfOrder?.enabled !== false;
 
 app.get('/api/public/menu', h(() => {
@@ -209,7 +210,7 @@ app.get('/api/public/queues/:token', h((req) => {
       toppings: l.toppings.map((t) => ({ id: t.id, name: t.name, price: t.price })),
       discounts: l.discounts.map((d) => ({ id: d.id, name: d.name, amount: d.amount })),
     })),
-    shop: { name: db.settings.shopName },
+    shop: { name: db.settings.shopName, phone: db.settings.phone, contacts: db.settings.contacts },
     payment: {
       promptPayId: db.settings.promptPayId || '',
       claimedAt: q.paymentClaim?.at || null,
@@ -855,6 +856,15 @@ app.put('/api/settings', need('settings'), h((req) => {
   if (b.phone !== undefined) s.phone = str(b.phone, 30);
   if (b.promptPayId !== undefined) s.promptPayId = str(b.promptPayId, 20).replace(/[^0-9]/g, '');
   if (b.receiptFooter !== undefined) s.receiptFooter = str(b.receiptFooter, 200);
+  if (b.contacts && typeof b.contacts === 'object') {
+    const url = (v) => {
+      const x = str(v, 300);
+      if (!x) return '';
+      if (!/^https?:\/\/[^\s]+$/i.test(x)) fail(400, `ลิงก์ไม่ถูกต้อง: ${x} (ต้องขึ้นต้นด้วย https://)`);
+      return x;
+    };
+    s.contacts = Object.fromEntries(CONTACT_KEYS.map((k) => [k, url(b.contacts[k])]));
+  }
   if (b.selfOrder && typeof b.selfOrder === 'object') {
     s.selfOrder = { enabled: b.selfOrder.enabled !== false, message: str(b.selfOrder.message, 200) };
   }

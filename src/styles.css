@@ -718,3 +718,14 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .queue-claim { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--info-50); color: var(--info); font-size: 13.5px; font-weight: 500; }
 .queue-claim .btn { min-height: 30px; margin-left: auto; color: var(--info); }
 .slip-img { width: 100%; max-height: 70vh; object-fit: contain; border-radius: 12px; }
+
+/* ---------- contact links ---------- */
+.contact-bar { margin-top: 8px; padding: 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); text-align: center; }
+.contact-title { font-weight: 600; margin-bottom: 12px; }
+.contact-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px 18px; }
+.contact-item { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; color: var(--ink-2); font-size: 12px; }
+.contact-icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.12); transition: transform .1s; }
+.contact-item:active .contact-icon { transform: scale(.94); }
+.contact-icon-sm { width: 26px; height: 26px; border-radius: 8px; box-shadow: none; }
+.contact-label { white-space: nowrap; }
+.contact-field-label { display: inline-flex; align-items: center; gap: 8px; }
