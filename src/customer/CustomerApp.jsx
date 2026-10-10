@@ -120,6 +120,9 @@ function OrderFlow({ go }) {
     try {
       const r = await publicApi('/orders', { method: 'POST', body: { name, phone, items: cart } });
       store.set(MY_QUEUES_KEY, [{ token: r.token, queueNo: r.queueNo, at: Date.now() }, ...myQueues].slice(0, 5));
+      // Clear the saved cart right away: this page unmounts on navigation, so the save effect would never run
+      // and the next order would start with the previous drinks. Name and phone are kept for convenience.
+      store.set(CART_KEY, { name, phone, cart: [] });
       setCart([]);
       setConfirmOpen(false);
       go(`/order/q/${r.token}`);
