@@ -47,6 +47,7 @@ export const thTime = (iso) => {
 export const thDateTime = (iso) => `${thDate(iso)} ${thTime(iso)}`;
 
 export const sweetLabel = (s) => (s == null ? '' : `หวาน ${s}%`);
+export const sweetDesc = (lv) => (lv === 0 ? 'ไม่หวาน' : lv <= 25 ? 'หวานน้อย' : lv <= 50 ? 'หวานกลาง' : lv <= 75 ? 'หวานมาก' : 'หวานปกติ');
 
 export const discountLabel = (d) => {
   if (d.type === 'percent') return `ลด ${num(d.value)}%`;

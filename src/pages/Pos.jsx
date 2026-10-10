@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { priceLine, summarize } from '../../shared/pricing.js';
-import { baht, discountLabel, sweetLabel, initial } from '../utils.js';
+import { baht, discountLabel, sweetLabel, sweetDesc, initial } from '../utils.js';
 import { Icon, Modal, Field, Loading, ErrorBox, Empty, useAsync, useUi } from '../components/ui.jsx';
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
@@ -250,7 +250,7 @@ export default function Pos({ go }) {
                   onClick={() => { setDraft((d) => ({ ...d, sweetness: lv })); setStep(5); }}>
                   <span className="sweet-meter"><span style={{ height: `${Math.min(100, lv)}%` }} /></span>
                   <span className="tile-name">{lv}%</span>
-                  <span className="muted small">{lv === 0 ? 'ไม่หวาน' : lv <= 25 ? 'หวานน้อย' : lv <= 50 ? 'หวานกลาง' : lv <= 75 ? 'หวานมาก' : 'หวานปกติ'}</span>
+                  <span className="muted small">{sweetDesc(lv)}</span>
                 </button>
               ))}
             </div>

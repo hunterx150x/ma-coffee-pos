@@ -1,7 +1,7 @@
 // Public, no-login pages for customers: /order (scan QR → order) and /order/q/:token (track my queue).
 import { useEffect, useMemo, useState } from 'react';
 import { priceLine, summarize } from '../../shared/pricing.js';
-import { baht, sweetLabel } from '../utils.js';
+import { baht, sweetLabel, sweetDesc } from '../utils.js';
 import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
 import { MenuThumb } from '../components/MenuImage.jsx';
 
@@ -267,9 +267,14 @@ function ItemSheet({ item, menu, onClose, onAdd }) {
       {levels.length > 0 && (
         <section>
           <h4 className="cx-h">ความหวาน</h4>
-          <div className="chips">
+          {/* Same tiles as the staff POS (step 4). */}
+          <div className="grid cx-sweet" style={{ gridTemplateColumns: `repeat(${Math.min(levels.length, 5)}, minmax(0, 1fr))` }}>
             {levels.map((lv) => (
-              <button key={lv} className={`chip ${sweetness === lv ? 'active' : ''}`} onClick={() => setSweetness(lv)}>{lv}%</button>
+              <button key={lv} className={`tile tile-sweet ${sweetness === lv ? 'selected' : ''}`} onClick={() => setSweetness(lv)}>
+                <span className="sweet-meter"><span style={{ height: `${Math.min(100, lv)}%` }} /></span>
+                <span className="tile-name">{lv}%</span>
+                <span className="muted small">{sweetDesc(lv)}</span>
+              </button>
             ))}
           </div>
         </section>
