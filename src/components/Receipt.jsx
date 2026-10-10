@@ -60,6 +60,13 @@ export default function Receipt({ order, settings }) {
           </>
         )}
       </div>
+      {order.loyalty && (
+        <div className="receipt-totals receipt-stamps">
+          {order.loyalty.used > 0 && <div className="receipt-row"><span>แลกแต้มฟรี {order.loyalty.redeemedCups} แก้ว</span><span>−{order.loyalty.used} แต้ม</span></div>}
+          <div className="receipt-row"><span>ได้รับแต้ม</span><span>+{order.loyalty.earned}</span></div>
+          <div className="receipt-row"><b>แต้มสะสมคงเหลือ</b><b>{order.loyalty.balance}</b></div>
+        </div>
+      )}
       {order.status === 'void' && <div className="receipt-void">*** บิลนี้ถูกยกเลิก ***</div>}
       {settings?.receiptFooter && <div className="receipt-foot">{settings.receiptFooter}</div>}
     </div>

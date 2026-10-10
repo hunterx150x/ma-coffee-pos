@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import { priceLine, summarize } from '../../shared/pricing.js';
+import { priceLine, summarize, stampsEarned, rewardsAvailable } from '../../shared/pricing.js';
 import { baht, discountLabel, sweetLabel, sweetDesc, initial } from '../utils.js';
 import { Icon, Modal, Field, Loading, ErrorBox, Empty, useAsync, useUi } from '../components/ui.jsx';
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
 import HowToModal from '../components/HowTo.jsx';
 import { MenuThumb } from '../components/MenuImage.jsx';
+import StampCard from '../components/StampCard.jsx';
 
 const STEPS = ['ลูกค้า', 'ประเภท', 'เมนู', 'ความหวาน', 'ท็อปปิ้ง', 'ส่วนลด', 'สรุปรายการ', 'ชำระเงิน'];
 const CART_KEY = 'ma_pos_cart';
 
-const emptyDraft = () => ({ categoryId: null, menuItemId: null, sweetness: null, toppingIds: [], discountIds: [], note: '', qty: 1, editIndex: null });
+const emptyDraft = () => ({ categoryId: null, menuItemId: null, sweetness: null, toppingIds: [], discountIds: [], note: '', qty: 1, rewardQty: 0, editIndex: null });
 const emptyCustomer = () => ({ type: null, id: null, name: '', phone: '', lineId: '' });
 
 function loadSaved() {
@@ -48,6 +49,7 @@ export default function Pos({ go }) {
     const d = cat.data;
     return {
       ...d,
+      loyalty: d.settings.loyalty, // priceLine needs the free-cup cap
       activeCategories: d.categories.filter((c) => c.active),
       activeItems: d.menuItems.filter((m) => m.active),
       activeToppings: d.toppings.filter((t) => t.active),
@@ -81,6 +83,13 @@ export default function Pos({ go }) {
   if (cat.error) return <ErrorBox error={cat.error} onRetry={cat.reload} />;
 
   const levels = catalog.settings.sweetnessLevels || [25, 50, 75, 100];
+  // Stamp card: free cups still available for this draft = earned rewards − rewards already used by other cart lines.
+  const loyalty = catalog.settings.loyalty;
+  const draftItem = draft.menuItemId && catalog.menuItems.find((m) => m.id === draft.menuItemId);
+  const rewardExcluded = !draftItem || (loyalty?.excludeCategoryIds || []).includes(draftItem.categoryId);
+  const rewardUsedElsewhere = cart.reduce((s, c, i) => s + (i === draft.editIndex ? 0 : c.rewardQty || 0), 0);
+  const rewardRoom = customer.type === 'old' && loyalty?.enabled && !rewardExcluded
+    ? Math.max(0, rewardsAvailable(customer.points, loyalty) - rewardUsedElsewhere - (draft.rewardQty || 0)) : 0;
 
   const startNewItem = () => {
     setDraft(emptyDraft());
@@ -90,7 +99,7 @@ export default function Pos({ go }) {
   const commitDraft = () => {
     const entry = {
       menuItemId: draft.menuItemId, sweetness: draft.sweetness, toppingIds: draft.toppingIds,
-      discountIds: draft.discountIds, note: draft.note.trim(), qty: draft.qty,
+      discountIds: draft.discountIds, note: draft.note.trim(), qty: draft.qty, rewardQty: Math.min(draft.rewardQty || 0, draft.qty),
     };
     if (draft.editIndex != null) {
       setCart((c) => c.map((x, i) => (i === draft.editIndex ? entry : x)));
@@ -171,6 +180,7 @@ export default function Pos({ go }) {
             {customer.type && (
               <span className="pill pill-customer">
                 <Icon name="user" size={14} /> {customer.type === 'old' ? customer.name : (customer.name || 'ลูกค้าใหม่')}
+                {customer.type === 'old' && customer.id && loyalty?.enabled && <span className="pill-stamps">☕ {customer.points || 0}</span>}
               </span>
             )}
             {(cart.length > 0 || customer.type) && (
@@ -193,7 +203,7 @@ export default function Pos({ go }) {
         )}
 
         {step === 1 && (
-          <StepCustomer customer={customer} setCustomer={setCustomer} onNext={() => setStep(cart.length ? 7 : 2)} />
+          <StepCustomer customer={customer} setCustomer={setCustomer} loyalty={catalog.settings.loyalty} onNext={() => setStep(cart.length ? 7 : 2)} />
         )}
 
         {step === 2 && (
@@ -301,6 +311,18 @@ export default function Pos({ go }) {
                 );
               })}
             </div>
+            {rewardRoom > 0 || draft.rewardQty > 0 ? (
+              <div className={`card reward-card ${draft.rewardQty ? 'on' : ''}`}>
+                <div className="reward-main">
+                  <b>🎁 ใช้แต้มสะสมแลกฟรี</b>
+                  <span className="muted small">{customer.name} แลกได้อีก {rewardRoom} แก้ว · แก้วละไม่เกิน {baht(loyalty.rewardMaxValue)}</span>
+                </div>
+                <Qty min={0} max={Math.min(draft.qty, rewardRoom + (draft.rewardQty || 0))} value={draft.rewardQty || 0}
+                  onChange={(v) => setDraft((d) => ({ ...d, rewardQty: v }))} />
+              </div>
+            ) : customer.type === 'old' && loyalty?.enabled && !rewardExcluded && (
+              <p className="muted small">☕ {customer.name} มี {customer.points || 0} แต้ม — ครบ {loyalty.cupsPerReward} แก้วแลกฟรีได้</p>
+            )}
             {!catalog.activeDiscounts.length && <p className="muted">ยังไม่มีส่วนลดที่เปิดใช้งาน</p>}
 
             <div className="card draft-summary">
@@ -335,6 +357,7 @@ export default function Pos({ go }) {
                 }} />
             ) : <Empty title="ยังไม่มีรายการ">กด “เพิ่มเมนู” เพื่อเริ่มเลือกเครื่องดื่ม</Empty>}
             <Totals totals={totals} />
+            <StampSummary customer={customer} loyalty={loyalty} lines={lines} />
             <div className="step-actions step-actions-split">
               <button className="btn btn-outline btn-lg" onClick={startNewItem}><Icon name="plus" /> เพิ่มเมนู</button>
               <button className="btn btn-primary btn-lg" disabled={!lines.length} onClick={() => setCheckoutOpen(true)}>
@@ -355,6 +378,7 @@ export default function Pos({ go }) {
             </div>
             <CartList lines={lines} readOnly onHowTo={setHowToLine} />
             <Totals totals={totals} />
+            <StampSummary customer={customer} loyalty={loyalty} lines={lines} />
             <div className="due">
               <span>ยอดที่ลูกค้าต้องชำระ</span>
               <b>{baht(totals.total)}</b>
@@ -475,7 +499,7 @@ function Stepper({ step }) {
   );
 }
 
-function StepCustomer({ customer, setCustomer, onNext }) {
+function StepCustomer({ customer, setCustomer, onNext, loyalty }) {
   const [q, setQ] = useState('');
   const list = useAsync(() => (customer.type === 'old' ? api('/customers', { query: { q } }) : Promise.resolve([])), [customer.type, q]);
 
@@ -527,13 +551,13 @@ function StepCustomer({ customer, setCustomer, onNext }) {
             <div className="list">
               {(list.data || []).map((c) => (
                 <button key={c.id} className={`list-item ${customer.id === c.id ? 'selected' : ''}`}
-                  onClick={() => { setCustomer({ type: 'old', id: c.id, name: c.name, phone: c.phone, lineId: c.lineId }); onNext(); }}>
+                  onClick={() => { setCustomer({ type: 'old', id: c.id, name: c.name, phone: c.phone, lineId: c.lineId, points: c.points || 0 }); onNext(); }}>
                   <div className="avatar avatar-sm">{initial(c.name)}</div>
                   <div className="list-item-main">
                     <b>{c.name}</b>
-                    <span className="muted small">{[c.phone, c.lineId && `LINE: ${c.lineId}`].filter(Boolean).join(' · ') || '—'}</span>
+                    <span className="muted small">{[c.phone, c.lineId && `LINE: ${c.lineId}`].filter(Boolean).join(' · ') || '—'} · มาแล้ว {c.visits || 0} ครั้ง</span>
+                    <StampCard points={c.points || 0} loyalty={loyalty} compact />
                   </div>
-                  <span className="muted small">มาแล้ว {c.visits || 0} ครั้ง</span>
                 </button>
               ))}
               {!list.data?.length && <Empty icon="customers" title={q ? 'ไม่พบลูกค้า' : 'ยังไม่มีข้อมูลลูกค้า'}>ลองเลือก “ลูกค้าใหม่” แทน</Empty>}
@@ -545,12 +569,12 @@ function StepCustomer({ customer, setCustomer, onNext }) {
   );
 }
 
-function Qty({ value, onChange }) {
+function Qty({ value, onChange, min = 1, max = Infinity }) {
   return (
     <div className="qty">
-      <button className="icon-btn" onClick={() => onChange(Math.max(1, value - 1))} disabled={value <= 1} aria-label="ลดจำนวน"><Icon name="minus" /></button>
+      <button className="icon-btn" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label="ลดจำนวน"><Icon name="minus" /></button>
       <span>{value}</span>
-      <button className="icon-btn" onClick={() => onChange(value + 1)} aria-label="เพิ่มจำนวน"><Icon name="plus" /></button>
+      <button className="icon-btn" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label="เพิ่มจำนวน"><Icon name="plus" /></button>
     </div>
   );
 }
@@ -637,3 +661,21 @@ function AddQueueModal({ open, defaultName, total, cups, onClose, onSubmit }) {
     </Modal>
   );
 }
+
+/** What this bill does to the member's stamp card (preview; the server applies it on payment). */
+function StampSummary({ customer, loyalty, lines }) {
+  if (customer.type !== 'old' || !loyalty?.enabled || !lines.length) return null;
+  const redeemed = lines.reduce((s, l) => s + (l.rewardQty || 0), 0);
+  const used = redeemed * loyalty.cupsPerReward;
+  const earned = stampsEarned(lines, loyalty);
+  const after = (customer.points || 0) - used + earned;
+  return (
+    <div className="card stamp-summary">
+      <div className="sum-row"><b>☕ สะสมแต้ม · {customer.name}</b><span>{customer.points || 0} แต้ม</span></div>
+      {used > 0 && <div className="sum-row text-discount"><span>แลกฟรี {redeemed} แก้ว</span><span>−{used} แต้ม</span></div>}
+      <div className="sum-row"><span>ได้รับจากบิลนี้</span><span>+{earned} แต้ม</span></div>
+      <StampCard points={after} loyalty={loyalty} compact title={`หลังชำระ: ${after} แต้ม`} />
+    </div>
+  );
+}
+

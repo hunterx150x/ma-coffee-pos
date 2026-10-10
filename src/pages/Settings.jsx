@@ -12,6 +12,7 @@ export default function Settings() {
   const { toast, confirm } = useUi();
   const s = useAsync(() => api('/settings'), []);
   const lineStatus = useAsync(() => api('/line/status'), []);
+  const cats = useAsync(() => api('/categories'), []);
   const [f, setF] = useState(null);
   const [levels, setLevels] = useState('');
   const fileRef = useRef(null);
@@ -84,6 +85,8 @@ export default function Settings() {
             <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
           </Field>
         </div>
+        <LoyaltyCard loyalty={{ enabled: true, cupsPerReward: 9, rewardMaxValue: 40, excludeCategoryIds: [], ...(f.loyalty || {}) }}
+          categories={cats.data || []} setLoyalty={(loyalty) => setF({ ...f, loyalty })} />
         <ContactsCard contacts={f.contacts || {}} setContacts={(contacts) => setF({ ...f, contacts })} />
         <SelfOrderCard so={{ enabled: true, message: '', ...(f.selfOrder || {}) }} setSo={(so) => setF({ ...f, selfOrder: so })} />
         <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />
@@ -237,6 +240,40 @@ function ContactsCard({ contacts, setContacts }) {
             onChange={(e) => setContacts({ ...contacts, [c.key]: e.target.value.trim() })} />
         </Field>
       ))}
+    </div>
+  );
+}
+
+/** Stamp card rules: N cups = 1 free cup worth up to X baht; some categories (e.g. snacks) don't earn stamps. */
+function LoyaltyCard({ loyalty, categories, setLoyalty }) {
+  const toggleCat = (id) => setLoyalty({
+    ...loyalty,
+    excludeCategoryIds: loyalty.excludeCategoryIds.includes(id) ? loyalty.excludeCategoryIds.filter((x) => x !== id) : [...loyalty.excludeCategoryIds, id],
+  });
+  return (
+    <div className="card form">
+      <h3 className="card-title">สะสมแต้มสมาชิก</h3>
+      <Toggle checked={loyalty.enabled} onChange={(v) => setLoyalty({ ...loyalty, enabled: v })} label="เปิดใช้ระบบสะสมแต้ม" />
+      <div className="form-grid">
+        <Field label="ซื้อครบกี่แก้ว แลกฟรี 1 แก้ว">
+          <input className="input" type="number" inputMode="numeric" min={1} max={100} value={loyalty.cupsPerReward}
+            onChange={(e) => setLoyalty({ ...loyalty, cupsPerReward: e.target.value })} />
+        </Field>
+        <Field label="แก้วฟรีราคาไม่เกิน (บาท)" hint="แพงกว่านี้ ลูกค้าจ่ายส่วนต่าง · 0 = ฟรีทั้งแก้ว">
+          <input className="input" type="number" inputMode="decimal" min={0} value={loyalty.rewardMaxValue}
+            onChange={(e) => setLoyalty({ ...loyalty, rewardMaxValue: e.target.value })} />
+        </Field>
+      </div>
+      <Field label="หมวดที่ไม่ได้แต้ม และแลกไม่ได้">
+        <div className="chips">
+          {categories.map((c) => (
+            <button key={c.id} className={`chip ${loyalty.excludeCategoryIds.includes(c.id) ? 'active' : ''}`} onClick={() => toggleCat(c.id)}>
+              {c.icon} {c.name}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <p className="muted small">1 แก้ว = 1 แต้ม (ได้แต้มเมื่อชำระเงิน) · แก้วที่แลกฟรีไม่ได้แต้ม · ยกเลิกบิลแล้วแต้มคืนอัตโนมัติ · ใช้เบอร์โทรเป็นรหัสสมาชิก · แต้มไม่มีวันหมดอายุ</p>
     </div>
   );
 }

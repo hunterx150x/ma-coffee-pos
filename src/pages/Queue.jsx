@@ -6,6 +6,7 @@ import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
 import HowToModal from '../components/HowTo.jsx';
 import { onRealtime, onRealtimeStatus } from '../realtime.js';
+import { rewardsAvailable } from '../../shared/pricing.js';
 
 const STATUS = {
   waiting: { label: 'รอทำ', cls: 'badge-warn' },
@@ -76,8 +77,25 @@ export default function Queue() {
     }
   };
 
+  // Stamp card for a member's queue: redeem free cups at pickup.
+  const [member, setMember] = useState(null);
+  const [redeem, setRedeem] = useState(0);
+  useEffect(() => {
+    setMember(null);
+    setRedeem(0);
+    if (payQueue?.customer?.id) api(`/customers/${payQueue.customer.id}/points`).then((r) => setMember(r)).catch(() => {});
+  }, [payQueue]);
+  const loyalty = cat.data?.settings.loyalty;
+  const eligible = payQueue ? payQueue.lines
+    .filter((l) => !(loyalty?.excludeCategoryIds || []).includes(l.categoryId))
+    .flatMap((l) => Array.from({ length: l.qty }, () => l.unitPrice))
+    .sort((a, b) => b - a) : [];
+  const maxRedeem = member && loyalty?.enabled ? Math.min(rewardsAvailable(member.points, loyalty), eligible.length) : 0;
+  const redeemValue = eligible.slice(0, redeem).reduce((s, p) => s + Math.min(p, loyalty?.rewardMaxValue || p), 0);
+  const payTotal = Math.max(0, (payQueue?.total || 0) - redeemValue);
+
   const pay = async ({ method, cashReceived }) => {
-    const r = await api(`/queues/${payQueue.id}/pay`, { method: 'POST', body: { paymentMethod: method, cashReceived } });
+    const r = await api(`/queues/${payQueue.id}/pay`, { method: 'POST', body: { paymentMethod: method, cashReceived, redeemCups: redeem } });
     setPayOpen(false);
     setPayQueue(null);
     setDoneOrder(r.order);
@@ -198,7 +216,23 @@ export default function Queue() {
                 </div>
               ))}
             </div>
-            <div className="due due-sm"><span>ยอดที่ลูกค้าต้องชำระ</span><b>{baht(payQueue.total)}</b></div>
+            {member && loyalty?.enabled && (
+              <div className={`card reward-card ${redeem ? 'on' : ''}`}>
+                <div className="reward-main">
+                  <b>☕ สมาชิกสะสมแต้ม · {member.points} แต้ม</b>
+                  <span className="muted small">{maxRedeem ? `แลกฟรีได้ ${maxRedeem} แก้ว · แก้วละไม่เกิน ${baht(loyalty.rewardMaxValue)}` : `ครบ ${loyalty.cupsPerReward} แต้มแลกฟรี 1 แก้ว`}</span>
+                </div>
+                {maxRedeem > 0 && (
+                  <div className="qty">
+                    <button className="icon-btn" onClick={() => setRedeem((v) => Math.max(0, v - 1))} disabled={redeem <= 0} aria-label="ลด"><Icon name="minus" /></button>
+                    <span>{redeem}</span>
+                    <button className="icon-btn" onClick={() => setRedeem((v) => Math.min(maxRedeem, v + 1))} disabled={redeem >= maxRedeem} aria-label="เพิ่ม"><Icon name="plus" /></button>
+                  </div>
+                )}
+              </div>
+            )}
+            {redeem > 0 && <div className="sum-row text-discount"><span>แลกแต้มฟรี {redeem} แก้ว</span><span>−{baht(redeemValue)}</span></div>}
+            <div className="due due-sm"><span>ยอดที่ลูกค้าต้องชำระ</span><b>{baht(payTotal)}</b></div>
             {payQueue.paymentClaim && (
               <div className="queue-claim">
                 <Icon name="qr" size={16} /> ลูกค้าแจ้งโอนแล้ว {thTime(payQueue.paymentClaim.at)} — ตรวจยอดเงินเข้าก่อนยืนยัน
@@ -210,7 +244,7 @@ export default function Queue() {
       </Modal>
 
       {cat.data && (
-        <PaymentModal open={payOpen} total={payQueue?.total || 0} settings={cat.data.settings} onClose={() => setPayOpen(false)} onPay={pay}
+        <PaymentModal open={payOpen} total={payTotal} settings={cat.data.settings} onClose={() => setPayOpen(false)} onPay={pay}
           defaultMethod={payQueue?.paymentClaim ? 'transfer' : null} />
       )}
 

@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { hashPassword } from './auth.js';
 import { DEFAULT_STAFF_PERMISSIONS } from '../shared/permissions.js';
+import { stampsEarned } from '../shared/pricing.js';
 
 const DATA_DIR = process.env.DATA_DIR || path.resolve('data');
 const FILE = path.join(DATA_DIR, 'db.json');
@@ -10,12 +11,12 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 export const COLLECTIONS = [
   'users', 'customers', 'categories', 'menuItems', 'toppings', 'discounts',
-  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips',
+  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves',
 ];
 // Collections that grow with every sale are stored one row per month in Postgres,
 // so a new sale rewrites only the current month instead of the whole history.
 // Transfer slips (images) get their own monthly rows so queue updates never rewrite them.
-const PARTITIONED = ['orders', 'stockMoves', 'queues', 'slips'];
+const PARTITIONED = ['orders', 'stockMoves', 'queues', 'slips', 'pointMoves'];
 const SINGLE_KEYS = [...COLLECTIONS.filter((c) => !PARTITIONED.includes(c)), 'settings', 'meta'];
 
 let db = null;
@@ -90,6 +91,28 @@ function migrate(d) {
       if (u.role === 'staff' && (u.permissions || []).includes('pos') && !u.permissions.includes('queue')) u.permissions.push('queue');
     }
     done.add('queue-permission');
+  }
+  if (!done.has('loyalty-v1')) {
+    // Snacks don't earn stamps; the old manual "LINE points" discount is replaced by the stamp card.
+    d.settings.loyalty = {
+      ...d.settings.loyalty,
+      excludeCategoryIds: d.categories.filter((c) => /ขนม|snack/i.test(c.name)).map((c) => c.id),
+    };
+    for (const disc of d.discounts) if (/สะสมแต้มไลน์/.test(disc.name)) disc.active = false;
+    // Backfill stamps from past paid bills linked to a customer.
+    const t = new Date().toISOString();
+    for (const o of [...d.orders].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
+      const c = o.status === 'paid' && o.customerId && d.customers.find((x) => x.id === o.customerId);
+      if (!c) continue;
+      const earned = stampsEarned(o.items || [], d.settings.loyalty);
+      if (!earned) continue;
+      c.points = (c.points || 0) + earned;
+      d.pointMoves.push({
+        id: crypto.randomUUID(), customerId: c.id, customerName: c.name, type: 'earn', points: earned, balance: c.points,
+        orderId: o.id, orderNo: o.orderNo, note: 'นับย้อนหลังจากบิลเก่า', userName: 'ระบบ', createdAt: o.createdAt, migratedAt: t,
+      });
+    }
+    done.add('loyalty-v1');
   }
   d.meta.migrations = [...done];
 }
@@ -183,6 +206,8 @@ function defaultSettings() {
     sweetnessLevels: [25, 50, 75, 100],
     line: { groupId: '', sale: true, void: true, lowStock: true },
     selfOrder: { enabled: true, message: '' },
+    // Stamp card: 1 stamp per cup, `cupsPerReward` stamps = 1 free cup worth up to `rewardMaxValue`.
+    loyalty: { enabled: true, cupsPerReward: 9, rewardMaxValue: 40, excludeCategoryIds: [] },
     // Shown as icons on the customer's queue page. Phone comes from `phone` above.
     contacts: {
       facebook: 'https://www.facebook.com/macoffeeandsnacks/',

@@ -6,6 +6,7 @@ import { baht, sweetLabel, sweetDesc, promptPayPayload } from '../utils.js';
 import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
 import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
 import ContactBar from '../components/Contacts.jsx';
+import StampCard from '../components/StampCard.jsx';
 
 const CART_KEY = 'ma_order_cart';
 const MY_QUEUES_KEY = 'ma_my_queues';
@@ -80,6 +81,7 @@ function OrderFlow({ go }) {
   const [err, setErr] = useState('');
   const saved = store.get(CART_KEY, {});
   const [name, setName] = useState(saved.name || '');
+  const [phone, setPhone] = useState(saved.phone || '');
   const [cart, setCart] = useState(saved.cart || []);
   const [step, setStep] = useState(saved.name ? (saved.cart?.length ? 2 : 1) : 0);
   const [cat, setCat] = useState(null);
@@ -91,7 +93,7 @@ function OrderFlow({ go }) {
   useEffect(() => {
     publicApi('/menu').then((m) => { setMenu(m); setCat(m.categories[0]?.id || null); }).catch((e) => setErr(e.message));
   }, []);
-  useEffect(() => { store.set(CART_KEY, { name, cart }); }, [name, cart]);
+  useEffect(() => { store.set(CART_KEY, { name, phone, cart }); }, [name, phone, cart]);
 
   const catalog = useMemo(() => menu && { ...menu, discounts: [], ingredients: [] }, [menu]);
   const lines = useMemo(() => (catalog ? cart.map((c) => { try { return priceLine(c, catalog); } catch { return null; } }).filter(Boolean) : []), [cart, catalog]);
@@ -115,7 +117,7 @@ function OrderFlow({ go }) {
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await publicApi('/orders', { method: 'POST', body: { name, items: cart } });
+      const r = await publicApi('/orders', { method: 'POST', body: { name, phone, items: cart } });
       store.set(MY_QUEUES_KEY, [{ token: r.token, queueNo: r.queueNo, at: Date.now() }, ...myQueues].slice(0, 5));
       setCart([]);
       setConfirmOpen(false);
@@ -146,6 +148,14 @@ function OrderFlow({ go }) {
           <form className="cx-name" onSubmit={(e) => { e.preventDefault(); if (name.trim()) setStep(1); }}>
             <input className="input input-lg" value={name} maxLength={40} placeholder="ชื่อ หรือ ชื่อเล่น" autoFocus
               onChange={(e) => setName(e.target.value)} />
+            {menu.loyalty && (
+              <div className="cx-member">
+                <label className="field-label" htmlFor="cx-phone">☕ เบอร์โทร สำหรับสะสมแต้ม <span className="muted">(ไม่บังคับ)</span></label>
+                <input id="cx-phone" className="input input-lg" type="tel" inputMode="tel" autoComplete="tel" maxLength={15} value={phone}
+                  placeholder="0812345678" onChange={(e) => setPhone(e.target.value)} />
+                <div className="muted small">ซื้อครบ {menu.loyalty.cupsPerReward} แก้ว รับฟรี 1 แก้ว{menu.loyalty.rewardMaxValue ? ` (ไม่เกิน ฿${menu.loyalty.rewardMaxValue})` : ''} · แลกแต้มได้ที่หน้าร้าน</div>
+              </div>
+            )}
             <button className="btn btn-primary btn-lg btn-block" disabled={!name.trim()}>เริ่มสั่งเครื่องดื่ม <Icon name="next" /></button>
           </form>
           <MyQueues list={myQueues} go={go} />
@@ -415,6 +425,13 @@ function TrackQueue({ token, go }) {
           {q.status === 'cancelled' && <div className="cx-ahead">หากมีข้อสงสัย กรุณาติดต่อพนักงาน</div>}
         </div>
 
+        {q.loyalty && (
+          <StampCard points={q.loyalty.points} loyalty={{ enabled: true, ...q.loyalty }}
+            title={q.status === 'paid' ? 'บัตรสะสมแต้มของคุณ' : 'บัตรสะสมแต้มของคุณ (แต้มจากออเดอร์นี้จะเข้าเมื่อชำระเงิน)'} />
+        )}
+        {q.loyalty?.rewards > 0 && q.status !== 'paid' && q.status !== 'cancelled' && (
+          <div className="cx-reward-hint">🎁 คุณมีสิทธิ์แลกฟรี {q.loyalty.rewards} แก้ว — แจ้งพนักงานตอนชำระเงินได้เลย</div>
+        )}
         <h3 className="cx-h">รายการที่สั่ง</h3>
         <div className="cx-lines">
           {q.lines.map((l, i) => (

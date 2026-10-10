@@ -42,7 +42,8 @@ export function discountAmount(discount, unitPrice, qty) {
 
 /**
  * Build a priced cart line from ids + catalog.
- * input: { menuItemId, toppingIds, discountIds, sweetness, qty, note }
+ * input: { menuItemId, toppingIds, discountIds, sweetness, qty, note, rewardQty }
+ * rewardQty: cups of this line redeemed with loyalty stamps (each free up to catalog.loyalty.rewardMaxValue).
  */
 export function priceLine(input, catalog) {
   const { menuItems = [], toppings = [], discounts = [], categories = [], ingredients = [] } = catalog;
@@ -61,14 +62,22 @@ export function priceLine(input, catalog) {
   const gross = round2(unitPrice * qty);
 
   let remaining = gross;
-  const discs = (input.discountIds || [])
+  const discs = [];
+  const rewardQty = Math.min(qty, Math.max(0, Math.floor(Number(input.rewardQty) || 0)));
+  if (rewardQty > 0) {
+    const max = Number(catalog.loyalty?.rewardMaxValue) || 0;
+    const amt = Math.min(remaining, round2((max > 0 ? Math.min(unitPrice, max) : unitPrice) * rewardQty));
+    remaining = round2(remaining - amt);
+    discs.push({ id: LOYALTY_DISCOUNT_ID, name: `แลกแต้มสะสม ${rewardQty} แก้ว`, type: 'loyalty', amount: round2(amt) });
+  }
+  discs.push(...(input.discountIds || [])
     .map((id) => discounts.find((d) => d.id === id))
     .filter(Boolean)
     .map((d) => {
       const amt = Math.min(remaining, discountAmount(d, unitPrice, qty));
       remaining = round2(remaining - amt);
       return { id: d.id, name: d.name, type: d.type, amount: round2(amt) };
-    });
+    }));
 
   const discountTotal = round2(discs.reduce((s, d) => s + d.amount, 0));
   return {
@@ -82,6 +91,7 @@ export function priceLine(input, catalog) {
     discounts: discs,
     note: (input.note || '').toString().slice(0, 200),
     qty,
+    rewardQty,
     unitPrice,
     unitCost: unitCostVal,
     gross,
@@ -99,3 +109,23 @@ export function summarize(lines) {
   const cups = lines.reduce((s, l) => s + l.qty, 0);
   return { gross, discountTotal, total, cost, cups };
 }
+
+// ---------- loyalty stamps ----------
+export const LOYALTY_DISCOUNT_ID = 'loyalty';
+
+/**
+ * Stamps earned by priced lines: 1 per cup, except excluded categories (e.g. snacks),
+ * cups redeemed with stamps, and cups given free by another "free cup" discount.
+ */
+export function stampsEarned(lines, loyalty) {
+  if (!loyalty?.enabled) return 0;
+  const excluded = new Set(loyalty.excludeCategoryIds || []);
+  return lines.reduce((sum, l) => {
+    if (excluded.has(l.categoryId)) return sum;
+    const otherFree = (l.discounts || []).some((d) => d.type === 'free') ? 1 : 0;
+    return sum + Math.max(0, l.qty - (l.rewardQty || 0) - otherFree);
+  }, 0);
+}
+
+export const rewardsAvailable = (points, loyalty) =>
+  loyalty?.enabled && loyalty.cupsPerReward > 0 ? Math.floor(Math.max(0, points || 0) / loyalty.cupsPerReward) : 0;

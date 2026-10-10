@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { load, getDb, save, flush, markDirty, uid, now, replaceDb, COLLECTIONS } from './db.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
 import { buildReport, parseRange, inRange, localDate } from './report.js';
-import { priceLine, summarize, round2, unitCost } from '../shared/pricing.js';
+import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import * as line from './line.js';
 import * as events from './events.js';
@@ -143,6 +143,7 @@ app.get('/api/public/menu', h(() => {
     shop: { name: db.settings.shopName, phone: db.settings.phone },
     open: selfOrderOpen(),
     message: db.settings.selfOrder?.message || '',
+    loyalty: db.settings.loyalty?.enabled ? { cupsPerReward: db.settings.loyalty.cupsPerReward, rewardMaxValue: db.settings.loyalty.rewardMaxValue } : null,
     sweetnessLevels: db.settings.sweetnessLevels,
     categories: cats.map(({ id, name, icon }) => ({ id, name, icon })),
     menuItems: db.menuItems.filter((m) => m.active && catIds.has(m.categoryId)).sort(bySort)
@@ -182,7 +183,22 @@ app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
     note: i.note,
     qty: i.qty,
   }));
-  const q = createQueue({ name, note: b.note, items, staffId: null, staffName: 'ลูกค้าสั่งเอง (QR)', source: 'customer' });
+  // Optional phone = stamp card member (existing member is matched by phone, otherwise signed up).
+  let member = null;
+  const phone = phoneDigits(b.phone);
+  if (phone) {
+    if (!/^0\d{8,9}$/.test(phone)) fail(400, 'เบอร์โทรไม่ถูกต้อง (เช่น 0812345678)');
+    member = findByPhone(phone);
+    if (!member) {
+      const t = now();
+      member = { id: uid(), name, phone, lineId: '', note: 'สมัครผ่าน QR', visits: 0, totalSpent: 0, points: 0, createdAt: t, updatedAt: t };
+      db.customers.push(member);
+    }
+  }
+  const q = createQueue({
+    name, note: b.note, items, staffId: null, staffName: 'ลูกค้าสั่งเอง (QR)', source: 'customer',
+    customer: member ? { type: 'old', id: member.id } : null,
+  });
   return { token: q.publicToken, queueNo: q.queueNo };
 }));
 
@@ -211,6 +227,11 @@ app.get('/api/public/queues/:token', h((req) => {
       discounts: l.discounts.map((d) => ({ id: d.id, name: d.name, amount: d.amount })),
     })),
     shop: { name: db.settings.shopName, phone: db.settings.phone, contacts: db.settings.contacts },
+    loyalty: (() => {
+      const c = q.customer && db.customers.find((x) => x.id === q.customer.id);
+      const L = db.settings.loyalty;
+      return c && L?.enabled ? { points: c.points || 0, cupsPerReward: L.cupsPerReward, rewardMaxValue: L.rewardMaxValue, rewards: rewardsAvailable(c.points, L) } : null;
+    })(),
     payment: {
       promptPayId: db.settings.promptPayId || '',
       claimedAt: q.paymentClaim?.at || null,
@@ -518,16 +539,47 @@ const cleanCustomer = (b) => ({
   lineId: str(b.lineId, 40),
   note: str(b.note, 200),
 });
+// The phone number is the member id for the stamp card, so it must be unique.
+const phoneDigits = (p) => String(p || '').replace(/\D/g, '');
+const findByPhone = (phone, exceptId) => {
+  const d = phoneDigits(phone);
+  return d ? getDb().customers.find((c) => c.id !== exceptId && phoneDigits(c.phone) === d) : null;
+};
+const assertPhoneFree = (phone, exceptId) => {
+  const other = findByPhone(phone, exceptId);
+  if (other) fail(400, `เบอร์ ${phone} เป็นของลูกค้า “${other.name}” อยู่แล้ว`);
+};
 app.post('/api/customers', anyOf('customers', 'pos'), h((req) => {
   const t = now();
-  const row = { id: uid(), ...cleanCustomer(req.body || {}), visits: 0, totalSpent: 0, createdAt: t, updatedAt: t };
+  const row = { id: uid(), ...cleanCustomer(req.body || {}), visits: 0, totalSpent: 0, points: 0, createdAt: t, updatedAt: t };
+  assertPhoneFree(row.phone);
   getDb().customers.push(row);
   save();
   return row;
 }));
+
+app.get('/api/customers/:id/points', anyOf('customers', 'pos'), h((req) => {
+  const c = getDb().customers.find((x) => x.id === req.params.id);
+  if (!c) fail(404, 'ไม่พบลูกค้า');
+  return { points: c.points || 0, moves: getDb().pointMoves.filter((m) => m.customerId === c.id).reverse().slice(0, 200) };
+}));
+
+// Manual stamp adjustment (e.g. moving a paper / LINE stamp card into the system). Owner only, reason required.
+app.post('/api/customers/:id/points', h((req) => {
+  if (req.user.role !== 'owner') fail(403, 'เฉพาะเจ้าของร้านเท่านั้นที่ปรับแต้มได้');
+  const c = getDb().customers.find((x) => x.id === req.params.id);
+  if (!c) fail(404, 'ไม่พบลูกค้า');
+  const delta = Math.trunc(Number(req.body?.points));
+  if (!delta || Math.abs(delta) > 1000) fail(400, 'กรุณากรอกจำนวนแต้ม (บวกเพื่อเพิ่ม ลบเพื่อหัก)');
+  if ((c.points || 0) + delta < 0) fail(400, 'แต้มคงเหลือติดลบไม่ได้');
+  addPoints(c, delta, 'adjust', { user: req.user, note: required(str(req.body?.note, 120), 'เหตุผล') });
+  save();
+  return c;
+}));
 app.put('/api/customers/:id', need('customers'), h((req) => {
   const row = getDb().customers.find((c) => c.id === req.params.id);
   if (!row) fail(404, 'ไม่พบลูกค้า');
+  if (req.body?.phone !== undefined) assertPhoneFree(str(req.body.phone, 20), row.id);
   Object.assign(row, cleanCustomer({ ...row, ...req.body }), { updatedAt: now() });
   save();
   return row;
@@ -562,11 +614,21 @@ function applyStock(order, sign, user) {
   return crossedLow;
 }
 
+// Every change to a customer's stamps goes through here so the balance always matches the history.
+function addPoints(customer, points, type, { order, user, note = '' } = {}) {
+  customer.points = (customer.points || 0) + points;
+  customer.updatedAt = now();
+  getDb().pointMoves.push({
+    id: uid(), customerId: customer.id, customerName: customer.name, type, points, balance: customer.points,
+    orderId: order?.id || null, orderNo: order?.orderNo || null, note, userName: user?.name || 'ระบบ', createdAt: now(),
+  });
+}
+
 const priceItems = (items) => {
   const db = getDb();
   if (!Array.isArray(items) || !items.length) fail(400, 'ยังไม่มีรายการสินค้า');
   try {
-    return items.map((i) => priceLine(i, db));
+    return items.map((i) => priceLine(i, { ...db, loyalty: db.settings.loyalty }));
   } catch (e) {
     return fail(400, e.message);
   }
@@ -595,10 +657,24 @@ function createOrder({ items, customer: cust, customerName, paymentMethod, cashR
   if (customerType === 'old' && cust?.id) {
     customer = db.customers.find((c) => c.id === cust.id) || null;
   } else if (customerType === 'new' && !customerName && str(cust?.name)) {
-    const t = now();
-    customer = { id: uid(), ...cleanCustomer(cust), visits: 0, totalSpent: 0, createdAt: t, updatedAt: t };
-    db.customers.push(customer);
+    customer = findByPhone(cust.phone);
+    if (!customer) {
+      const t = now();
+      customer = { id: uid(), ...cleanCustomer(cust), visits: 0, totalSpent: 0, points: 0, createdAt: t, updatedAt: t };
+      db.customers.push(customer);
+    }
   }
+  // Stamp card: redeeming needs a member with enough stamps; checked before anything is saved.
+  const loyalty = db.settings.loyalty;
+  const redeemedCups = lines.reduce((sum, l) => sum + (l.rewardQty || 0), 0);
+  if (redeemedCups > 0) {
+    if (!loyalty?.enabled) fail(400, 'ระบบสะสมแต้มปิดอยู่');
+    if (!customer || customerType !== 'old') fail(400, 'การแลกแต้มต้องเลือกลูกค้าสมาชิก (ลูกค้าเก่า)');
+    const excluded = new Set(loyalty.excludeCategoryIds || []);
+    if (lines.some((l) => l.rewardQty && excluded.has(l.categoryId))) fail(400, 'เมนูหมวดนี้ใช้แต้มแลกไม่ได้');
+    if (redeemedCups > rewardsAvailable(customer.points, loyalty)) fail(400, `แต้มไม่พอ — ${customer.name} แลกได้ ${rewardsAvailable(customer.points, loyalty)} แก้ว`);
+  }
+
   if (customer) {
     customer.visits = (customer.visits || 0) + 1;
     customer.totalSpent = round2((customer.totalSpent || 0) + s.total);
@@ -624,6 +700,13 @@ function createOrder({ items, customer: cust, customerName, paymentMethod, cashR
     staffName: user.name,
     ...extra,
   };
+  if (customer && loyalty?.enabled) {
+    const used = redeemedCups * loyalty.cupsPerReward;
+    const earned = stampsEarned(lines, loyalty);
+    if (used) addPoints(customer, -used, 'redeem', { order, user, note: `แลก ${redeemedCups} แก้ว` });
+    if (earned) addPoints(customer, earned, 'earn', { order, user });
+    order.loyalty = { earned, used, redeemedCups, balance: customer.points || 0, cupsPerReward: loyalty.cupsPerReward };
+  }
   db.orders.push(order);
   const crossedLow = applyStock(order, -1, user);
   notifySale(order, crossedLow);
@@ -725,8 +808,24 @@ app.post('/api/queues/:id/pay', need('queue'), h((req) => {
   const q = findQueue(req.params.id);
   if (q.status === 'paid') fail(400, 'คิวนี้ชำระเงินแล้ว');
   if (q.status === 'cancelled') fail(400, 'คิวนี้ถูกยกเลิกแล้ว');
+  // Redeem stamps at pickup: put the free cups on the most expensive eligible drinks.
+  let items = q.items.map((i) => ({ ...i, rewardQty: 0 }));
+  let toRedeem = Math.max(0, Math.floor(Number(req.body?.redeemCups) || 0));
+  if (toRedeem) {
+    const excluded = new Set(getDb().settings.loyalty?.excludeCategoryIds || []);
+    const byPrice = items.map((_, i) => i)
+      .filter((i) => !excluded.has(q.lines[i]?.categoryId))
+      .sort((a, b) => (q.lines[b]?.unitPrice || 0) - (q.lines[a]?.unitPrice || 0));
+    for (const i of byPrice) {
+      const take = Math.min(toRedeem, items[i].qty);
+      items[i].rewardQty = take;
+      toRedeem -= take;
+      if (!toRedeem) break;
+    }
+    if (toRedeem) fail(400, 'จำนวนแก้วที่แลกมากกว่าเครื่องดื่มในคิว');
+  }
   const order = createOrder({
-    items: q.items,
+    items,
     customer: q.customer,
     customerName: q.customer ? undefined : q.name,
     paymentMethod: req.body?.paymentMethod,
@@ -776,6 +875,9 @@ app.post('/api/orders/:id/void', h((req) => {
   if (c) {
     c.visits = Math.max(0, (c.visits || 0) - 1);
     c.totalSpent = round2(Math.max(0, (c.totalSpent || 0) - o.total));
+    // Undo the stamp card: take back stamps earned, give back stamps spent.
+    if (o.loyalty?.earned) addPoints(c, -o.loyalty.earned, 'void', { order: o, user: req.user, note: 'ยกเลิกบิล: หักแต้มที่ได้' });
+    if (o.loyalty?.used) addPoints(c, o.loyalty.used, 'void', { order: o, user: req.user, note: 'ยกเลิกบิล: คืนแต้มที่แลก' });
   }
   applyStock(o, +1, req.user);
   save();
@@ -856,6 +958,18 @@ app.put('/api/settings', need('settings'), h((req) => {
   if (b.phone !== undefined) s.phone = str(b.phone, 30);
   if (b.promptPayId !== undefined) s.promptPayId = str(b.promptPayId, 20).replace(/[^0-9]/g, '');
   if (b.receiptFooter !== undefined) s.receiptFooter = str(b.receiptFooter, 200);
+  if (b.loyalty && typeof b.loyalty === 'object') {
+    const cur = s.loyalty || {};
+    const cups = Math.trunc(Number(b.loyalty.cupsPerReward ?? cur.cupsPerReward));
+    if (!(cups >= 1 && cups <= 100)) fail(400, 'จำนวนแก้วที่ต้องสะสมต้องอยู่ระหว่าง 1–100');
+    s.loyalty = {
+      enabled: b.loyalty.enabled !== undefined ? !!b.loyalty.enabled : cur.enabled !== false,
+      cupsPerReward: cups,
+      rewardMaxValue: num(b.loyalty.rewardMaxValue ?? cur.rewardMaxValue),
+      excludeCategoryIds: (Array.isArray(b.loyalty.excludeCategoryIds) ? b.loyalty.excludeCategoryIds : cur.excludeCategoryIds || [])
+        .filter((id) => getDb().categories.some((c) => c.id === id)),
+    };
+  }
   if (b.contacts && typeof b.contacts === 'object') {
     const url = (v) => {
       const x = str(v, 300);

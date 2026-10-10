@@ -729,3 +729,28 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .contact-icon-sm { width: 26px; height: 26px; border-radius: 8px; box-shadow: none; }
 .contact-label { white-space: nowrap; }
 .contact-field-label { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---------- stamp card ---------- */
+.stamp-card { border-radius: 14px; padding: 12px; background: linear-gradient(135deg, #fff7ee, #f3e3cf); border: 1px solid #ecd6bb; display: flex; flex-direction: column; gap: 8px; }
+.stamp-card.has-reward { border-color: var(--good); background: linear-gradient(135deg, #f2fbf5, #e2f3e9); }
+.stamp-title { font-weight: 600; font-size: 14px; }
+.stamp-dots { display: flex; flex-wrap: wrap; gap: 5px; }
+.stamp { width: 26px; height: 26px; border-radius: 50%; border: 2px dashed #d6b892; display: grid; place-items: center; font-size: 13px; background: rgba(255,255,255,.6); }
+.stamp.on { border: 2px solid var(--primary); background: #fff; }
+.stamp-gift { border: 2px solid var(--accent); background: #fff; }
+.stamp-text { font-size: 13px; color: var(--ink-2); }
+.stamp-reward { color: var(--good); }
+.stamp-card-compact { padding: 6px 8px; gap: 4px; margin-top: 4px; }
+.stamp-card-compact .stamp { width: 18px; height: 18px; font-size: 9px; border-width: 1.5px; }
+.stamp-card-compact .stamp-text { font-size: 12px; }
+.pill-stamps { margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--primary-100); font-weight: 600; }
+.reward-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 2px dashed #e0c49f; background: #fffaf3; margin-top: 4px; }
+.reward-card.on { border-style: solid; border-color: var(--good); background: var(--good-50); }
+.reward-main { display: flex; flex-direction: column; min-width: 0; }
+.stamp-summary { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.receipt-stamps { border-top: 1px dashed var(--line-2); margin-top: 8px; }
+.points-adjust { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; align-items: end; }
+@media (max-width: 599px) { .points-adjust { grid-template-columns: 1fr; } }
+.points-history { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.cx-member { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: #fff7ee; border: 1px solid #ecd6bb; }
+.cx-reward-hint { padding: 10px 12px; border-radius: 12px; background: var(--good-50); color: var(--good); font-weight: 500; }

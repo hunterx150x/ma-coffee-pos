@@ -132,6 +132,7 @@ export function saleFlex(order, today, shopName) {
           ...(order.discountTotal > 0 ? [row('ส่วนลด', `−${baht(order.discountTotal)}`, { color: C.green })] : []),
           row('ยอดสุทธิ', baht(order.total), { weight: 'bold', size: 'md' }),
           t(`ชำระโดย ${paidBy}`, { size: 'xs', color: C.muted, margin: 'sm' }),
+          ...(order.loyalty ? [t(`สะสมแต้ม ${order.loyalty.used ? `แลก ${order.loyalty.redeemedCups} แก้ว (−${order.loyalty.used}) · ` : ''}+${order.loyalty.earned} · คงเหลือ ${order.loyalty.balance} แต้ม`, { size: 'xs', color: C.brown })] : []),
         ],
       },
       footer: {
