@@ -11,7 +11,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 export const COLLECTIONS = [
   'users', 'customers', 'categories', 'menuItems', 'toppings', 'discounts',
-  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves',
+  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves', 'leads',
 ];
 // Collections that grow with every sale are stored one row per month in Postgres,
 // so a new sale rewrites only the current month instead of the whole history.

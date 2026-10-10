@@ -90,6 +90,7 @@ export default function Settings() {
         <ContactsCard contacts={f.contacts || {}} setContacts={(contacts) => setF({ ...f, contacts })} />
         <SelfOrderCard so={{ enabled: true, message: '', ...(f.selfOrder || {}) }} setSo={(so) => setF({ ...f, selfOrder: so })} />
         <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />
+        {user.role === 'owner' && <LeadsCard />}
         {user.role === 'owner' && (
           <div className="card form">
             <h3 className="card-title">สำรอง / กู้คืนข้อมูล</h3>
@@ -274,6 +275,33 @@ function LoyaltyCard({ loyalty, categories, setLoyalty }) {
         </div>
       </Field>
       <p className="muted small">1 แก้ว = 1 แต้ม (ได้แต้มเมื่อชำระเงิน) · แก้วที่แลกฟรีไม่ได้แต้ม · ยกเลิกบิลแล้วแต้มคืนอัตโนมัติ · ใช้เบอร์โทรเป็นรหัสสมาชิก · แต้มไม่มีวันหมดอายุ</p>
+    </div>
+  );
+}
+
+/** People who asked for a free trial on the public /system page. */
+function LeadsCard() {
+  const leads = useAsync(() => api('/leads'), []);
+  const { confirm } = useUi();
+  const remove = async (l) => {
+    if (!(await confirm({ message: `ลบรายชื่อ “${l.shop}”?`, okText: 'ลบ', danger: true }))) return;
+    await api(`/leads/${l.id}`, { method: 'DELETE' });
+    leads.reload();
+  };
+  return (
+    <div className="card form">
+      <h3 className="card-title">ผู้สนใจทดลองใช้ระบบ ({leads.data?.length || 0})</h3>
+      <p className="muted small">จากหน้า <a className="link" href="/system" target="_blank" rel="noreferrer">/system</a> (ลิงก์ล่างสุดในหน้าสั่งของลูกค้า) · มีคนส่งใหม่จะแจ้งเข้ากลุ่ม LINE ด้วย</p>
+      {leads.data?.length ? leads.data.map((l) => (
+        <div key={l.id} className="lead-row">
+          <div className="lead-main">
+            <b>{l.shop}</b> · {l.name}
+            <div className="small"><a className="link" href={`tel:${l.phone}`}>{l.phone}</a>{l.lineId ? ` · LINE ${l.lineId}` : ''} · <span className="muted">{thDateTime(l.createdAt)}</span></div>
+            {l.note && <div className="muted small">{l.note}</div>}
+          </div>
+          <button className="icon-btn icon-btn-danger" aria-label="ลบ" onClick={() => remove(l)}><Icon name="trash" size={18} /></button>
+        </div>
+      )) : <div className="muted small">ยังไม่มีผู้สนใจ</div>}
     </div>
   );
 }

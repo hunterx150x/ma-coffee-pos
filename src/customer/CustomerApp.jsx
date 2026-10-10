@@ -57,6 +57,7 @@ export default function CustomerApp() {
   return (
     <div className="cx">
       {m ? <TrackQueue token={m[1]} go={go} /> : <OrderFlow go={go} />}
+      <a className="cx-promo" href="/system">💡 สนใจระบบนี้สำหรับร้านของคุณ? <u>คลิกที่นี่</u> · ทดลองใช้ฟรี 1 เดือน</a>
     </div>
   );
 }

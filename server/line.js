@@ -168,6 +168,27 @@ export function voidFlex(order, today) {
   };
 }
 
+export function leadFlex(lead) {
+  return {
+    type: 'flex',
+    altText: `🔔 มีร้านสนใจทดลองใช้ระบบ: ${lead.shop} (${lead.name} ${lead.phone})`,
+    contents: {
+      type: 'bubble',
+      header: header('🔔 มีร้านสนใจทดลองใช้ระบบ', when(lead.createdAt), '#2a6f97'),
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '14px',
+        contents: [
+          row('ร้าน', lead.shop, { color: C.muted }, { color: C.ink, weight: 'bold' }),
+          row('ชื่อ', lead.name, { color: C.muted }, { color: C.ink }),
+          row('เบอร์โทร', lead.phone, { color: C.muted }, { color: C.ink }),
+          ...(lead.lineId ? [row('LINE', lead.lineId, { color: C.muted }, { color: C.ink })] : []),
+          ...(lead.note ? [t(lead.note, { size: 'xs', color: C.muted, margin: 'sm' })] : []),
+        ],
+      },
+    },
+  };
+}
+
 export function lowStockFlex(items, title = '📦 วัตถุดิบใกล้หมด') {
   return {
     type: 'flex',

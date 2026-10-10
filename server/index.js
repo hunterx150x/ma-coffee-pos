@@ -264,6 +264,32 @@ app.post('/api/public/queues/:token/paid', h((req) => {
   return { ok: true };
 }));
 
+// Trial requests from the public /system page (people interested in buying this POS).
+const leadHits = new Map();
+app.post('/api/public/leads', h((req) => {
+  const b = req.body || {};
+  const ip = req.ip;
+  const hits = (leadHits.get(ip) || []).filter((t) => t > Date.now() - 60 * 60 * 1000);
+  if (hits.length >= 5) fail(429, 'ส่งบ่อยเกินไป กรุณาลองใหม่ภายหลัง');
+  if (!b.consent) fail(400, 'กรุณายินยอมให้ติดต่อกลับ');
+  const lead = {
+    id: uid(),
+    name: required(str(b.name, 60), 'ชื่อ'),
+    shop: required(str(b.shop, 80), 'ชื่อร้าน'),
+    phone: required(str(b.phone, 20), 'เบอร์โทร'),
+    lineId: str(b.lineId, 40),
+    note: str(b.note, 500),
+    createdAt: now(),
+  };
+  if (!/^\+?\d{9,12}$/.test(lead.phone.replace(/[\s-]/g, ''))) fail(400, 'เบอร์โทรไม่ถูกต้อง');
+  hits.push(Date.now());
+  leadHits.set(ip, hits);
+  getDb().leads.push(lead);
+  save();
+  if (line.lineConfigured() && lineGroupId()) line.pushQuiet(lineGroupId(), [line.leadFlex(lead)]);
+  return { ok: true };
+}));
+
 app.get('/api/public/events', (req, res) => events.subscribe(req, res, { isPublic: true }));
 
 // Realtime stream. EventSource cannot send headers, so the token comes in the query string.
@@ -1025,6 +1051,13 @@ app.post('/api/line/test', need('settings'), (req, res, next) => {
 app.post('/api/line/summary', need('reports'), (req, res, next) => {
   lineSend([line.summaryFlex(buildReport(getDb(), parseRange()), getDb().settings.shopName)]).then((r) => res.json(r), next);
 });
+
+app.get('/api/leads', ownerOnly, h(() => [...getDb().leads].reverse()));
+app.delete('/api/leads/:id', ownerOnly, h((req) => {
+  getDb().leads = getDb().leads.filter((x) => x.id !== req.params.id);
+  save();
+  return { ok: true };
+}));
 
 app.get('/api/backup', ownerOnly, h((_req, res) => {
   const { meta, ...data } = getDb();
