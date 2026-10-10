@@ -41,6 +41,7 @@ export default function Queue() {
   const [cancelQ, setCancelQ] = useState(null);
   const [reason, setReason] = useState('');
   const [howToLine, setHowToLine] = useState(null);
+  const [slipQ, setSlipQ] = useState(null);
 
   const [live, setLive] = useState(false);
 
@@ -127,6 +128,12 @@ export default function Queue() {
                   <span className={`badge ${STATUS[x.status].cls}`}>{STATUS[x.status].label}</span>
                 </header>
                 {x.note && <div className="line-note">{x.note}</div>}
+                {x.paymentClaim && x.status !== 'paid' && (
+                  <div className="queue-claim">
+                    <Icon name="qr" size={16} /> ลูกค้าแจ้งโอนแล้ว {thTime(x.paymentClaim.at)}
+                    {x.paymentClaim.slipId && <button className="btn btn-sm btn-ghost" onClick={() => setSlipQ(x)}>ดูสลิป</button>}
+                  </div>
+                )}
                 <div className="queue-lines">
                   {x.lines.map((l, i) => (
                     <div key={i} className="queue-line">
@@ -192,12 +199,19 @@ export default function Queue() {
               ))}
             </div>
             <div className="due due-sm"><span>ยอดที่ลูกค้าต้องชำระ</span><b>{baht(payQueue.total)}</b></div>
+            {payQueue.paymentClaim && (
+              <div className="queue-claim">
+                <Icon name="qr" size={16} /> ลูกค้าแจ้งโอนแล้ว {thTime(payQueue.paymentClaim.at)} — ตรวจยอดเงินเข้าก่อนยืนยัน
+                {payQueue.paymentClaim.slipId && <button className="btn btn-sm btn-ghost" onClick={() => setSlipQ(payQueue)}>ดูสลิป</button>}
+              </div>
+            )}
           </>
         )}
       </Modal>
 
       {cat.data && (
-        <PaymentModal open={payOpen} total={payQueue?.total || 0} settings={cat.data.settings} onClose={() => setPayOpen(false)} onPay={pay} />
+        <PaymentModal open={payOpen} total={payQueue?.total || 0} settings={cat.data.settings} onClose={() => setPayOpen(false)} onPay={pay}
+          defaultMethod={payQueue?.paymentClaim ? 'transfer' : null} />
       )}
 
       <Modal open={!!doneOrder} title="ชำระเงินสำเร็จ" onClose={() => setDoneOrder(null)}
@@ -236,6 +250,23 @@ export default function Queue() {
       </Modal>
 
       <HowToModal line={howToLine} catalog={cat.data} onClose={() => setHowToLine(null)} />
+      <SlipModal queue={slipQ} onClose={() => setSlipQ(null)} />
     </div>
   );
 }
+
+function SlipModal({ queue, onClose }) {
+  const [state, setState] = useState({ image: null, error: '' });
+  useEffect(() => {
+    setState({ image: null, error: '' });
+    if (!queue) return;
+    api(`/queues/${queue.id}/slip`).then((r) => setState({ image: r.image, error: '' })).catch((e) => setState({ image: null, error: e.message }));
+  }, [queue]);
+  return (
+    <Modal open={!!queue} title={queue ? `สลิปโอนเงิน · คิว ${queue.queueNo} (${baht(queue.total)})` : ''} onClose={onClose}
+      footer={<button className="btn btn-primary" onClick={onClose}>ปิด</button>}>
+      {state.error ? <ErrorBox error={state.error} /> : state.image ? <img className="slip-img" src={state.image} alt="สลิป" /> : <Loading />}
+    </Modal>
+  );
+}
+

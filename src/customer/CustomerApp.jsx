@@ -1,9 +1,10 @@
 // Public, no-login pages for customers: /order (scan QR → order) and /order/q/:token (track my queue).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { priceLine, summarize } from '../../shared/pricing.js';
-import { baht, sweetLabel, sweetDesc } from '../utils.js';
+import { baht, sweetLabel, sweetDesc, promptPayPayload } from '../utils.js';
 import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
-import { MenuThumb } from '../components/MenuImage.jsx';
+import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
 
 const CART_KEY = 'ma_order_cart';
 const MY_QUEUES_KEY = 'ma_my_queues';
@@ -427,7 +428,7 @@ function TrackQueue({ token, go }) {
           ))}
         </div>
         {q.status !== 'paid' && q.status !== 'cancelled' && (
-          <div className="due"><span>ยอดที่ต้องชำระที่หน้าร้าน</span><b>{baht(q.total)}</b></div>
+          <PaySection token={token} q={q} onClaimed={() => publicApi(`/queues/${token}`).then(setQ).catch(() => {})} />
         )}
         <button className="btn btn-outline btn-lg btn-block cx-more" onClick={() => go('/order')}><Icon name="plus" /> สั่งเครื่องดื่มเพิ่ม</button>
         <p className="muted small cx-hint">เก็บหน้านี้ไว้เพื่อดูสถานะคิว หรือกลับมาที่ลิงก์เดิมได้ทุกเมื่อ</p>
@@ -435,3 +436,89 @@ function TrackQueue({ token, go }) {
     </>
   );
 }
+
+/** Pay by PromptPay QR (amount filled in), or at the counter. Customer can tell the shop they transferred, with a slip. */
+function PaySection({ token, q, onClaimed }) {
+  const [qr, setQr] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [slip, setSlip] = useState(null);
+  const fileRef = useRef(null);
+  const ppId = q.payment?.promptPayId;
+
+  useEffect(() => {
+    const payload = ppId && promptPayPayload(ppId, q.total);
+    if (!payload || !(q.total > 0)) { setQr(null); return; }
+    QRCode.toDataURL(payload, { margin: 2, width: 520 }).then(setQr).catch(() => setQr(null));
+  }, [ppId, q.total]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(ppId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard blocked */ }
+  };
+  const pickSlip = async (file) => {
+    if (!file) return;
+    setErr('');
+    try {
+      setSlip(await resizeToDataUrl(file, 1280));
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const claim = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      await publicApi(`/queues/${token}/paid`, { method: 'POST', body: slip ? { slip } : {} });
+      setSlip(null);
+      onClaimed();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="cx-pay">
+      <div className="due"><span>ยอดที่ต้องชำระ</span><b>{baht(q.total)}</b></div>
+      {qr ? (
+        <div className="cx-pay-card">
+          <div className="cx-pay-title"><Icon name="qr" size={18} /> โอนผ่าน QR พร้อมเพย์</div>
+          <img className="cx-pay-qr" src={qr} alt={`QR พร้อมเพย์ ${baht(q.total)}`} />
+          <div className="cx-pay-amount">{baht(q.total)}</div>
+          <div className="muted small">กดค้างที่รูป QR เพื่อบันทึก แล้วเปิดสแกนจากแอปธนาคาร</div>
+          <div className="cx-pay-tools">
+            <a className="btn btn-sm btn-outline" href={qr} download={`promptpay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
+            <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>
+          </div>
+
+          {q.payment.claimedAt ? (
+            <div className="cx-claimed">
+              <Icon name="check" size={18} stroke={3} /> แจ้งโอนแล้ว{q.payment.hasSlip ? ' (แนบสลิป)' : ''} · รอพนักงานตรวจสอบ
+            </div>
+          ) : (
+            <div className="cx-claim">
+              <div className="muted small">โอนเสร็จแล้ว แจ้งร้านได้เลย (แนบสลิปหรือไม่ก็ได้)</div>
+              {slip && <img className="cx-slip" src={slip} alt="สลิป" />}
+              <div className="cx-pay-tools">
+                <button className="btn btn-sm btn-ghost" onClick={() => fileRef.current?.click()}>
+                  <Icon name="upload" size={16} /> {slip ? 'เปลี่ยนสลิป' : 'แนบสลิป'}
+                </button>
+                <button className="btn btn-success" disabled={busy} onClick={claim}>{busy ? 'กำลังแจ้ง...' : 'แจ้งโอนแล้ว'}</button>
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSlip(e.target.files[0]); e.target.value = ''; }} />
+            </div>
+          )}
+          {err && <div className="field-error">{err}</div>}
+        </div>
+      ) : null}
+      <div className="muted small cx-hint">{qr ? 'หรือชำระด้วยเงินสด / สแกนที่หน้าร้านก็ได้' : 'ชำระเงินที่หน้าร้านเมื่อรับเครื่องดื่ม'}</div>
+    </section>
+  );
+}
+

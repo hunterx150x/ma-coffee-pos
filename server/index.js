@@ -210,7 +210,36 @@ app.get('/api/public/queues/:token', h((req) => {
       discounts: l.discounts.map((d) => ({ id: d.id, name: d.name, amount: d.amount })),
     })),
     shop: { name: db.settings.shopName },
+    payment: {
+      promptPayId: db.settings.promptPayId || '',
+      claimedAt: q.paymentClaim?.at || null,
+      hasSlip: Boolean(q.paymentClaim?.slipId),
+    },
   };
+}));
+
+// Customer says "I transferred" (optionally with a slip photo); staff verify and take payment in the queue.
+const MAX_SLIP_CHARS = 600 * 1024;
+app.post('/api/public/queues/:token/paid', h((req) => {
+  const db = getDb();
+  const q = db.queues.find((x) => x.publicToken && x.publicToken === String(req.params.token));
+  if (!q) fail(404, 'ไม่พบคิวนี้');
+  if (q.status === 'paid' || q.status === 'cancelled') fail(400, q.status === 'paid' ? 'คิวนี้ชำระเงินแล้ว' : 'คิวนี้ถูกยกเลิกแล้ว');
+  if ((q.paymentClaim?.count || 0) >= 5) fail(429, 'แจ้งโอนหลายครั้งเกินไป กรุณาติดต่อพนักงาน');
+  let slipId = q.paymentClaim?.slipId || null;
+  const slip = req.body?.slip;
+  if (slip) {
+    if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(slip) || slip.length > MAX_SLIP_CHARS) fail(400, 'ไฟล์สลิปไม่ถูกต้อง หรือใหญ่เกินไป');
+    const row = { id: uid(), queueId: q.id, image: slip, createdAt: now() };
+    db.slips.push(row);
+    slipId = row.id;
+  }
+  q.paymentClaim = { at: now(), slipId, count: (q.paymentClaim?.count || 0) + 1 };
+  q.updatedAt = now();
+  markDirty('queues', q.createdAt);
+  save();
+  events.broadcast('queues', { id: q.id, status: q.status });
+  return { ok: true };
 }));
 
 app.get('/api/public/events', (req, res) => events.subscribe(req, res, { isPublic: true }));
@@ -662,6 +691,13 @@ function createQueue({ name, note, items, customer, staffId, staffName, source =
 app.post('/api/queues', need('pos'), h((req) => {
   const b = req.body || {};
   return createQueue({ name: b.name, note: b.note, items: b.items, customer: b.customer, staffId: req.user.id, staffName: req.user.name });
+}));
+
+app.get('/api/queues/:id/slip', anyOf('queue', 'pos'), h((req) => {
+  const q = findQueue(req.params.id);
+  const slip = q.paymentClaim?.slipId && getDb().slips.find((x) => x.id === q.paymentClaim.slipId);
+  if (!slip) fail(404, 'ไม่มีสลิป');
+  return { image: slip.image, at: slip.createdAt };
 }));
 
 app.post('/api/queues/:id/status', need('queue'), h((req) => {

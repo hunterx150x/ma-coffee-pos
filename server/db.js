@@ -10,11 +10,12 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 export const COLLECTIONS = [
   'users', 'customers', 'categories', 'menuItems', 'toppings', 'discounts',
-  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues',
+  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips',
 ];
 // Collections that grow with every sale are stored one row per month in Postgres,
 // so a new sale rewrites only the current month instead of the whole history.
-const PARTITIONED = ['orders', 'stockMoves', 'queues'];
+// Transfer slips (images) get their own monthly rows so queue updates never rewrite them.
+const PARTITIONED = ['orders', 'stockMoves', 'queues', 'slips'];
 const SINGLE_KEYS = [...COLLECTIONS.filter((c) => !PARTITIONED.includes(c)), 'settings', 'meta'];
 
 let db = null;

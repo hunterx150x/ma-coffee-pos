@@ -4,7 +4,7 @@ import { baht, promptPayPayload } from '../utils.js';
 import { Icon, Modal, Field, Loading } from './ui.jsx';
 
 /** Choose cash / transfer, take cash and show change, or show a PromptPay QR. */
-export default function PaymentModal({ open, total, settings, onClose, onPay }) {
+export default function PaymentModal({ open, total, settings, onClose, onPay, defaultMethod = null }) {
   const [method, setMethod] = useState(null);
   const [cash, setCash] = useState('');
   const [busy, setBusy] = useState(false);
@@ -12,8 +12,8 @@ export default function PaymentModal({ open, total, settings, onClose, onPay }) 
   const [qr, setQr] = useState(null);
 
   useEffect(() => {
-    if (open) { setMethod(null); setCash(''); setErr(''); }
-  }, [open]);
+    if (open) { setMethod(defaultMethod); setCash(''); setErr(''); }
+  }, [open, defaultMethod]);
 
   useEffect(() => {
     setQr(null);

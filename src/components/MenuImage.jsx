@@ -14,12 +14,12 @@ const MAX_SIDE = 640;
 const QUALITY = 0.82;
 
 /** Shrink a photo in the browser so it can be stored inline (base64) without bloating the database. */
-function resizeToDataUrl(file) {
+export function resizeToDataUrl(file, maxSide = MAX_SIDE) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
