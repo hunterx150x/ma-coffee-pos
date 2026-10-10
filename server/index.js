@@ -10,7 +10,7 @@ import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable 
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import * as line from './line.js';
 import * as events from './events.js';
-import { audit, auditMutations, describeChanges } from './audit.js';
+import { audit, auditMutations, describeChanges, describeRecord, itemsText, STATUS_TH } from './audit.js';
 
 await load();
 
@@ -217,7 +217,7 @@ app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
     name, note: b.note, items, staffId: null, staffName: 'ลูกค้าสั่งเอง (QR)', source: 'customer',
     customer: member ? { type: 'old', id: member.id } : null,
   });
-  audit(req, { category: 'คิว', action: 'ลูกค้าสั่งผ่าน QR', detail: `คิว ${q.queueNo} ${name} · ฿${q.total} · ${q.cups} แก้ว${member ? ' (สมาชิก)' : ''}`, actor: `ลูกค้า: ${name}` });
+  audit(req, { category: 'คิว', action: 'ลูกค้าสั่งผ่าน QR', detail: `คิว ${q.queueNo} ${name} · ฿${q.total} · ${q.cups} แก้ว${member ? ' (สมาชิก)' : ''}${q.note ? ` · โน้ต: ${q.note}` : ''} · รายการ: ${itemsText(q.lines)}`, actor: `ลูกค้า: ${name}` });
   save();
   return { token: q.publicToken, queueNo: q.queueNo };
 }));
@@ -446,7 +446,7 @@ function crud(route, collection, perm, clean, { canDelete, view = (x) => x } = {
     const row = { id: uid(), active: true, ...clean(req.body || {}), createdAt: t, updatedAt: t };
     getDb()[collection].push(row);
     save();
-    res.locals.audit = [label(row), row.price != null ? `ราคา ${row.price}` : '', row.amount != null ? `${row.amount} บาท` : ''].filter(Boolean).join(' · ');
+    res.locals.audit = [label(row), describeRecord(row)].filter(Boolean).join(' · ');
     return view(row);
   }));
   app.put(`/api/${route}/:id`, need(perm), h((req, res) => {
@@ -455,7 +455,9 @@ function crud(route, collection, perm, clean, { canDelete, view = (x) => x } = {
     const before = { ...row };
     Object.assign(row, clean({ ...row, ...(req.body || {}) }), { updatedAt: now() });
     save();
-    res.locals.audit = `${label(row)}: ${describeChanges(before, row) || 'ไม่มีการเปลี่ยนแปลง'}`;
+    const changes = describeChanges(before, row);
+    if (!changes) res.locals.auditSkip = true; // saved without changing anything
+    res.locals.audit = `${label(row)}: ${changes}`;
     return view(row);
   }));
   app.delete(`/api/${route}/:id`, need(perm), h((req, res) => {
@@ -463,7 +465,7 @@ function crud(route, collection, perm, clean, { canDelete, view = (x) => x } = {
     const idx = list.findIndex((x) => x.id === req.params.id);
     if (idx < 0) fail(404, 'ไม่พบข้อมูล');
     if (canDelete) canDelete(list[idx]);
-    res.locals.audit = [label(list[idx]), list[idx].amount != null ? `${list[idx].amount} บาท` : ''].filter(Boolean).join(' · ');
+    res.locals.audit = [label(list[idx]), describeRecord(list[idx])].filter(Boolean).join(' · '); // what was deleted
     list.splice(idx, 1);
     save();
     return { ok: true };
@@ -979,12 +981,13 @@ app.get('/api/queues/:id/slip', anyOf('queue', 'pos'), h((req) => {
   return { image: slip.image, at: slip.createdAt };
 }));
 
-app.post('/api/queues/:id/status', need('queue'), h((req) => {
+app.post('/api/queues/:id/status', need('queue'), h((req, res) => {
   const q = findQueue(req.params.id);
   const status = req.body?.status;
   if (!['waiting', 'done', 'cancelled'].includes(status)) fail(400, 'สถานะไม่ถูกต้อง');
   if (q.status === 'paid') fail(400, 'คิวนี้ชำระเงินแล้ว');
   if (q.status === 'cancelled' && status !== 'waiting') fail(400, 'คิวนี้ถูกยกเลิกแล้ว');
+  const prev = q.status;
   q.status = status;
   if (status === 'done') q.doneAt = now();
   if (status === 'cancelled') {
@@ -996,6 +999,7 @@ app.post('/api/queues/:id/status', need('queue'), h((req) => {
   markDirty('queues', q.createdAt);
   save();
   events.broadcast('queues', { id: q.id, status: q.status });
+  res.locals.audit = `คิว ${q.queueNo} ${q.name || ''} ${STATUS_TH[prev] || prev}→${STATUS_TH[status]}${q.cancelReason && status === 'cancelled' ? ` · เหตุผล: ${q.cancelReason}` : ''} · ฿${q.total} · ${itemsText(q.lines)}`;
   return q;
 }));
 
