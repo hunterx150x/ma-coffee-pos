@@ -65,7 +65,9 @@ export function downloadCsv(filename, rows) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
+  document.body.appendChild(a); // Safari only downloads links that are in the page
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 

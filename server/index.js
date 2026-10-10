@@ -904,7 +904,7 @@ app.post('/api/queues/:id/pay', need('queue'), h((req) => {
     paymentMethod: req.body?.paymentMethod,
     cashReceived: req.body?.cashReceived,
     user: req.user,
-    extra: { queueId: q.id, queueNo: q.queueNo },
+    extra: { queueId: q.id, queueNo: q.queueNo, source: q.source || 'staff' },
   });
   q.status = 'paid';
   q.paidAt = now();

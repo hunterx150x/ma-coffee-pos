@@ -1,34 +1,46 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import { baht, num, presetRange, thDate, downloadCsv } from '../utils.js';
-import { DateRange, Empty, ErrorBox, Icon, Loading, PageHead, Tabs, useAsync } from '../components/ui.jsx';
+import { DateRange, Empty, ErrorBox, Icon, Loading, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
+import { summaryRows, detailRows } from '../reportExport.js';
 
 export default function Reports() {
   const [range, setRange] = useState(presetRange('today'));
   const [tab, setTab] = useState('menu');
+  const { toast } = useUi();
   const rep = useAsync(() => api('/reports/summary', { query: range }), [range.from, range.to]);
   const r = rep.data;
   const t = r?.totals;
   const singleDay = range.from === range.to;
 
-  const exportCsv = () => {
-    const rows = [
-      ['รายงานยอดขาย', `${r.range.from} ถึง ${r.range.to}`],
-      [],
-      ['วันที่', 'จำนวนบิล', 'จำนวนแก้ว', 'ยอดขาย', 'เงินสด', 'เงินโอน', 'ต้นทุน', 'กำไรขั้นต้น', 'ค่าใช้จ่าย', 'กำไรสุทธิ'],
-      ...r.daily.map((d) => [d.date, d.orders, d.cups, d.sales, d.cash, d.transfer, d.cost, d.grossProfit, d.expenses, d.netProfit]),
-      ['รวม', t.orders, t.cups, t.sales, t.cash, t.transfer, t.cost, t.grossProfit, t.expenses, t.netProfit],
-      [],
-      ['เมนู', 'ประเภท', 'จำนวน', 'ยอดขาย', 'ต้นทุน', 'กำไร'],
-      ...r.topItems.map((i) => [i.name, i.category, i.qty, i.sales, i.cost, i.profit]),
-    ];
-    downloadCsv(`report-${r.range.from}_${r.range.to}.csv`, rows);
+  const [exporting, setExporting] = useState('');
+  // Both exports work from the raw bills of the selected range (the summary endpoint has no line details).
+  const exportCsv = async (kind) => {
+    setExporting(kind);
+    try {
+      const [orders, settings] = await Promise.all([api('/orders', { query: range }), api('/settings')]);
+      const name = `${kind === 'detail' ? 'sales-detail' : 'report-promo'}-${r.range.from}_${r.range.to}.csv`;
+      downloadCsv(name, kind === 'detail' ? detailRows(orders) : summaryRows(r, orders, settings.shopName));
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setExporting('');
+    }
   };
 
   return (
     <div>
       <PageHead title="รายงานยอดขาย & กำไร-ขาดทุน" sub={r ? (singleDay ? thDate(r.range.from) : `${thDate(r.range.from)} – ${thDate(r.range.to)}`) : ''}>
-        {r && <button className="btn btn-outline" onClick={exportCsv}><Icon name="download" /> ส่งออก CSV</button>}
+        {r && (
+          <>
+            <button className="btn btn-outline" disabled={!!exporting} onClick={() => exportCsv('summary')} title="สรุปวิเคราะห์: เมนู × ส่วนลด, ช่วงเวลา, วันในสัปดาห์, ท็อปปิ้ง, ลูกค้า">
+              <Icon name="download" /> {exporting === 'summary' ? 'กำลังสร้าง...' : 'CSV สรุปเพื่อทำโปรโมชั่น'}
+            </button>
+            <button className="btn btn-outline" disabled={!!exporting} onClick={() => exportCsv('detail')} title="1 แถวต่อ 1 รายการ สำหรับทำ Pivot ใน Excel / Google Sheets">
+              <Icon name="download" /> {exporting === 'detail' ? 'กำลังสร้าง...' : 'CSV รายละเอียดทุกแก้ว'}
+            </button>
+          </>
+        )}
       </PageHead>
       <div className="card filters"><DateRange value={range} onChange={setRange} /></div>
 
