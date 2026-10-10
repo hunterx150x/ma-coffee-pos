@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { baht, num, thDateTime } from '../utils.js';
 import { Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
@@ -10,6 +10,26 @@ const ADJUST = {
   set: { title: 'ตรวจนับสต๊อก', qty: 'จำนวนคงเหลือจริง', ok: 'บันทึกยอดตรวจนับ' },
 };
 
+const VIEW_KEY = 'ma_stock_view';
+const readView = () => {
+  try { return localStorage.getItem(VIEW_KEY) || 'table'; } catch { return 'table'; }
+};
+// 0 = out, 1 = low, 2 = ok (sorts problems first)
+const stockLevel = (i) => (i.quantity <= 0 ? 0 : i.quantity <= i.minQty ? 1 : 2);
+const LEVEL = [
+  { label: 'หมด', cls: 'badge-danger' },
+  { label: 'ใกล้หมด', cls: 'badge-warn' },
+  { label: 'ปกติ', cls: 'badge-cash' },
+];
+const SORTS = {
+  status: (a, b) => stockLevel(a) - stockLevel(b) || a.name.localeCompare(b.name, 'th'),
+  name: (a, b) => a.name.localeCompare(b.name, 'th'),
+  qty: (a, b) => a.quantity - b.quantity,
+  min: (a, b) => a.minQty - b.minQty,
+  cost: (a, b) => a.costPerUnit - b.costPerUnit,
+  value: (a, b) => Math.max(0, a.quantity) * a.costPerUnit - Math.max(0, b.quantity) * b.costPerUnit,
+};
+
 export default function Stock() {
   const { toast, confirm } = useUi();
   const [tab, setTab] = useState('list');
@@ -19,7 +39,21 @@ export default function Stock() {
   const [adj, setAdj] = useState(null);
   const [err, setErr] = useState('');
 
-  const rows = (list.data || []).filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()));
+  const [view, setView] = useState(readView);
+  const [onlyLow, setOnlyLow] = useState(false);
+  const [sort, setSort] = useState({ key: 'status', dir: 1 });
+  useEffect(() => {
+    try { localStorage.setItem(VIEW_KEY, view); } catch { /* ignore */ }
+  }, [view]);
+
+  const rows = (list.data || [])
+    .filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()))
+    .filter((i) => !onlyLow || stockLevel(i) < 2)
+    .sort((a, b) => SORTS[sort.key](a, b) * sort.dir);
+  const sortBy = (key) => setSort((x) => ({ key, dir: x.key === key ? -x.dir : 1 }));
+  const openAdjust = (i, type) => { setErr(''); setAdj({ ing: i, type, qty: '', totalCost: '', note: '' }); };
+  const openEdit = (i) => { setErr(''); setEdit({ ...i }); };
+  const [sheet, setSheet] = useState(null); // phone: action menu for one row
   const low = (list.data || []).filter((i) => i.quantity <= i.minQty);
   const value = (list.data || []).reduce((s, i) => s + Math.max(0, i.quantity) * i.costPerUnit, 0);
 
@@ -79,11 +113,68 @@ export default function Stock() {
 
       {tab === 'list' && (list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : (
         <>
-          <div className="search search-block">
-            <Icon name="search" size={18} />
-            <input className="input" placeholder="ค้นหาวัตถุดิบ" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="stock-toolbar">
+            <div className="search">
+              <Icon name="search" size={18} />
+              <input className="input" placeholder="ค้นหาวัตถุดิบ" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <button className={`chip ${onlyLow ? 'active' : ''}`} onClick={() => setOnlyLow((v) => !v)}>
+              <Icon name="alert" size={14} /> เฉพาะใกล้หมด / หมด ({low.length})
+            </button>
+            <Tabs value={view} onChange={setView} tabs={[{ key: 'table', label: 'ตาราง' }, { key: 'cards', label: 'การ์ด' }]} />
           </div>
-          {rows.length ? (
+          {rows.length && view === 'table' ? (
+            <div className="card table-card">
+              <table className="table stock-table">
+                <thead>
+                  <tr>
+                    <SortTh k="name" sort={sort} onSort={sortBy}>วัตถุดิบ</SortTh>
+                    <SortTh k="qty" sort={sort} onSort={sortBy} className="num">คงเหลือ</SortTh>
+                    <SortTh k="min" sort={sort} onSort={sortBy} className="num hide-sm">ขั้นต่ำ</SortTh>
+                    <SortTh k="cost" sort={sort} onSort={sortBy} className="num hide-sm">ต้นทุน/หน่วย</SortTh>
+                    <SortTh k="value" sort={sort} onSort={sortBy} className="num hide-sm">มูลค่าคงเหลือ</SortTh>
+                    <SortTh k="status" sort={sort} onSort={sortBy} className="hide-sm">สถานะ</SortTh>
+                    <th className="stock-th-actions">ปรับสต๊อก</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((i) => {
+                    const lv = stockLevel(i);
+                    return (
+                      <tr key={i.id} className={lv < 2 ? `stock-row-${lv === 0 ? 'out' : 'low'}` : ''}>
+                        <td>
+                          <button className="link-btn" onClick={() => openEdit(i)} title="แก้ไขวัตถุดิบ"><b>{i.name}</b> <Icon name="edit" size={13} /></button>
+                          <div className="muted small show-sm">ขั้นต่ำ {num(i.minQty)} · {baht(i.costPerUnit)}/{i.unit}</div>
+                        </td>
+                        <td className="num">
+                          <b className={lv === 0 ? 'text-bad' : lv === 1 ? 'text-warn' : ''}>{num(i.quantity)}</b> <span className="muted small">{i.unit}</span>
+                          {lv < 2 && <div className="show-sm"><span className={`badge ${LEVEL[lv].cls}`}>{LEVEL[lv].label}</span></div>}
+                        </td>
+                        <td className="num hide-sm">{num(i.minQty)} <span className="muted small">{i.unit}</span></td>
+                        <td className="num hide-sm">{baht(i.costPerUnit)}</td>
+                        <td className="num hide-sm">{baht(Math.round(Math.max(0, i.quantity) * i.costPerUnit))}</td>
+                        <td className="hide-sm"><span className={`badge ${LEVEL[lv].cls}`}>{LEVEL[lv].label}</span></td>
+                        <td>
+                          <button className="btn btn-sm btn-outline show-sm" onClick={() => setSheet(i)}>ปรับ</button>
+                          <div className="stock-row-actions hide-sm">
+                            <button className="btn btn-sm btn-primary" onClick={() => openAdjust(i, 'in')}>รับเข้า</button>
+                            <button className="btn btn-sm btn-outline" onClick={() => openAdjust(i, 'out')}>เบิก</button>
+                            <button className="btn btn-sm btn-outline" onClick={() => openAdjust(i, 'set')}>นับ</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>{rows.length} รายการ</td><td /><td className="hide-sm" /><td className="hide-sm" />
+                    <td className="num hide-sm">{baht(Math.round(rows.reduce((s2, i) => s2 + Math.max(0, i.quantity) * i.costPerUnit, 0)))}</td><td className="hide-sm" /><td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : rows.length ? (
             <div className="stock-list">
               {rows.map((i) => {
                 const isLow = i.quantity <= i.minQty;
@@ -91,7 +182,7 @@ export default function Stock() {
                 return (
                   <div key={i.id} className={`card stock-item ${isLow ? 'stock-low' : ''}`}>
                     <div className="stock-item-head">
-                      <button className="link-btn" onClick={() => { setErr(''); setEdit({ ...i }); }}>
+                      <button className="link-btn" onClick={() => openEdit(i)}>
                         <b>{i.name}</b> <Icon name="edit" size={14} />
                       </button>
                       {isLow && <span className="badge badge-warn"><Icon name="alert" size={12} /> ใกล้หมด</span>}
@@ -104,7 +195,7 @@ export default function Stock() {
                     <div className="stock-actions">
                       {Object.keys(ADJUST).map((type) => (
                         <button key={type} className={`btn btn-sm ${type === 'in' ? 'btn-primary' : 'btn-outline'}`}
-                          onClick={() => { setErr(''); setAdj({ ing: i, type, qty: '', totalCost: '', note: '' }); }}>
+                          onClick={() => openAdjust(i, type)}>
                           {MOVE_LABEL[type]}
                         </button>
                       ))}
@@ -118,6 +209,18 @@ export default function Stock() {
       ))}
 
       {tab === 'moves' && <Moves ings={list.data || []} />}
+
+      <Modal open={!!sheet} title={sheet?.name || ''} size="sm" onClose={() => setSheet(null)}>
+        {sheet && (
+          <div className="stock-sheet">
+            <div className="muted">คงเหลือ <b>{num(sheet.quantity)} {sheet.unit}</b> · ขั้นต่ำ {num(sheet.minQty)} {sheet.unit}</div>
+            <button className="btn btn-primary btn-lg btn-block" onClick={() => { openAdjust(sheet, 'in'); setSheet(null); }}>รับวัตถุดิบเข้า</button>
+            <button className="btn btn-outline btn-lg btn-block" onClick={() => { openAdjust(sheet, 'out'); setSheet(null); }}>เบิกออก / ของเสีย</button>
+            <button className="btn btn-outline btn-lg btn-block" onClick={() => { openAdjust(sheet, 'set'); setSheet(null); }}>ตรวจนับสต๊อก</button>
+            <button className="btn btn-ghost btn-block" onClick={() => { openEdit(sheet); setSheet(null); }}><Icon name="edit" size={16} /> แก้ไขข้อมูลวัตถุดิบ</button>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!edit} title={edit?.id ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบ'} onClose={() => setEdit(null)}
         footer={(
@@ -211,3 +314,13 @@ function Moves({ ings }) {
     </>
   );
 }
+
+function SortTh({ k, sort, onSort, className = '', children }) {
+  const active = sort.key === k;
+  return (
+    <th className={`th-sort ${className}`} aria-sort={active ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
+      <button onClick={() => onSort(k)}>{children}<span className="th-sort-arrow">{active ? (sort.dir > 0 ? '▲' : '▼') : '↕'}</span></button>
+    </th>
+  );
+}
+

@@ -754,3 +754,31 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .points-history { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .cx-member { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: #fff7ee; border: 1px solid #ecd6bb; }
 .cx-reward-hint { padding: 10px 12px; border-radius: 12px; background: var(--good-50); color: var(--good); font-weight: 500; }
+
+/* ---------- stock table ---------- */
+.stock-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.stock-toolbar .search { flex: 1 1 220px; }
+.stock-toolbar .tabs { margin-bottom: 0; }
+.stock-toolbar .chip { display: inline-flex; align-items: center; gap: 6px; }
+.th-sort button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.th-sort.num button { justify-content: flex-end; }
+.th-sort-arrow { font-size: 10px; color: var(--line-2); }
+.th-sort[aria-sort="ascending"] .th-sort-arrow, .th-sort[aria-sort="descending"] .th-sort-arrow { color: var(--primary); }
+.th-sort button:focus-visible { outline: 2px solid var(--primary-100); border-radius: 4px; }
+.stock-table td { padding-top: 9px; padding-bottom: 9px; }
+.stock-row-low td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
+.stock-row-out td:first-child { box-shadow: inset 4px 0 0 var(--bad); }
+.stock-row-out { background: #fff8f7; }
+.stock-row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.stock-row-actions .btn { min-height: 32px; padding: 0 10px; }
+.stock-th-actions { text-align: right; }
+.text-warn { color: var(--warn); }
+.stock-sheet { display: flex; flex-direction: column; gap: 10px; }
+@media (max-width: 599px) {
+  .stock-table th, .stock-table td { padding-left: 10px; padding-right: 10px; }
+  .stock-table td:first-child { min-width: 150px; }
+  .stock-th-actions { width: 1%; }
+}
+/* Component display rules (.btn, .stock-row-actions) would otherwise beat the responsive helpers. */
+@media (min-width: 600px) { .stock-table .show-sm { display: none !important; } }
+@media (max-width: 599px) { .stock-table .hide-sm { display: none !important; } }
