@@ -4,11 +4,14 @@ import { baht, num, presetRange, thDate, downloadCsv } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Icon, Loading, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
 import { summaryRows, detailRows } from '../reportExport.js';
 import SalesSheet from './SalesSheet.jsx';
+import { ChartCard, ChartPicker, ChartsGrid, ColumnChart, useChartPrefs } from './ReportCharts.jsx';
 
 export default function Reports() {
   const [range, setRange] = useState(presetRange('today'));
   const [tab, setTab] = useState('menu');
   const [view, setView] = useState('dashboard');
+  const prefs = useChartPrefs();
+  const catalog = useAsync(() => api('/catalog'), []);
   const { toast } = useUi();
   const rep = useAsync(() => api('/reports/summary', { query: range }), [range.from, range.to]);
   const r = rep.data;
@@ -59,7 +62,8 @@ export default function Reports() {
               sub={`กำไรขั้นต้น ${baht(t.grossProfit)} (${num(t.grossMargin)}%)`} tone={t.netProfit >= 0 ? 'good' : 'bad'} />
           </div>
 
-          <div className="report-grid">
+          <ChartPicker prefs={prefs} singleDay={singleDay} />
+          <div className={`report-grid ${prefs.isOn('trend') ? '' : 'report-grid-single'}`}>
             <div className="card">
               <h3 className="card-title">งบกำไร-ขาดทุน</h3>
               <div className="pl">
@@ -85,17 +89,19 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="card">
-              <h3 className="card-title">{singleDay ? 'ยอดขายรายชั่วโมง' : 'ยอดขายรายวัน'}</h3>
+            {prefs.isOn('trend') && (
+            <ChartCard title={singleDay ? 'ยอดขายรายชั่วโมง' : 'ยอดขายรายวัน'} sub={`รวม ${baht(t.sales)} · ${num(t.orders)} บิล`}>
               {t.orders ? (
-                <BarChart
+                <ColumnChart
                   data={singleDay
                     ? r.hours.filter((hr) => hr.hour >= 6 && hr.hour <= 22 || hr.sales > 0).map((hr) => ({ label: `${hr.hour}`, tip: `${hr.hour}:00–${hr.hour}:59`, value: hr.sales, sub: `${hr.orders} บิล` }))
                     : r.daily.map((d) => ({ label: thDate(d.date, { year: false }), tip: thDate(d.date), value: d.sales, sub: `${d.orders} บิล · กำไรสุทธิ ${baht(d.netProfit)}` }))}
                 />
               ) : <Empty icon="reports" title="ยังไม่มียอดขายในช่วงนี้" />}
-            </div>
+            </ChartCard>
+            )}
           </div>
+          <ChartsGrid r={r} singleDay={singleDay} catalog={catalog.data} prefs={prefs} />
 
           {!singleDay && (
             <div className="card table-card">
@@ -209,49 +215,4 @@ function RankTable({ rows, cols, bar }) {
       </tbody>
     </table>
   );
-}
-
-/** Single-series column chart: one hue, 4px rounded tops anchored to the baseline, hover tooltip per bar. */
-function BarChart({ data }) {
-  const [hover, setHover] = useState(null);
-  const max = Math.max(...data.map((d) => d.value), 0);
-  const niceMax = niceCeil(max);
-  const ticks = [0, niceMax / 2, niceMax];
-  const labelEvery = Math.ceil(data.length / 12);
-  return (
-    <div className="chart">
-      <div className="chart-plot">
-        <div className="chart-grid">
-          {ticks.slice().reverse().map((tk) => (
-            <div key={tk} className="chart-gridline"><span>{tk >= 1000 ? `${num(tk / 1000)}k` : num(tk)}</span></div>
-          ))}
-        </div>
-        <div className="chart-bars" onMouseLeave={() => setHover(null)}>
-          {data.map((d, i) => (
-            <div key={i} className="chart-col" onMouseEnter={() => setHover(i)} onClick={() => setHover(i)}>
-              <div className={`chart-bar ${hover === i ? 'hover' : ''}`} style={{ height: niceMax ? `${(d.value / niceMax) * 100}%` : 0 }} />
-              {hover === i && (
-                <div className={`chart-tip ${i > data.length / 2 ? 'left' : ''}`}>
-                  <div className="muted small">{d.tip}</div>
-                  <b>{baht(d.value)}</b>
-                  {d.sub && <div className="small">{d.sub}</div>}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="chart-labels">
-        {data.map((d, i) => <span key={i}>{i % labelEvery === 0 ? d.label : ''}</span>)}
-      </div>
-    </div>
-  );
-}
-
-function niceCeil(v) {
-  if (v <= 0) return 100;
-  const p = 10 ** Math.floor(Math.log10(v));
-  const n = v / p;
-  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
-  return step * p;
 }

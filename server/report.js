@@ -34,6 +34,13 @@ function eachDay(start, end) {
 }
 
 export function buildReport(db, range) {
+  const itemById = new Map((db.menuItems || []).map((m) => [m.id, m]));
+  const catById = new Map((db.categories || []).map((c) => [c.id, c]));
+  const currentNames = (l) => {
+    const m = itemById.get(l.menuItemId);
+    const c = catById.get(m?.categoryId || l.categoryId);
+    return { name: m?.name || l.name, category: c?.name || l.categoryName || '-' };
+  };
   const orders = db.orders.filter((o) => inRange(o.createdAt, range));
   const paid = orders.filter((o) => o.status === 'paid');
   const voided = orders.filter((o) => o.status === 'void');
@@ -120,16 +127,18 @@ export function buildReport(db, range) {
     staff.set(o.staffId, s);
 
     for (const l of o.items) {
-      const it = items.get(l.menuItemId) || { name: l.name, category: l.categoryName, qty: 0, sales: 0, cost: 0 };
+      // Bills keep the names from the day they were sold; report under today's menu / category names.
+      const cur = currentNames(l);
+      const it = items.get(l.menuItemId) || { name: cur.name, category: cur.category, qty: 0, sales: 0, cost: 0 };
       it.qty += l.qty;
       it.sales += l.total;
       it.cost += l.cost;
       items.set(l.menuItemId, it);
 
-      const c = cats.get(l.categoryName) || { name: l.categoryName || '-', qty: 0, sales: 0 };
+      const c = cats.get(cur.category) || { name: cur.category, qty: 0, sales: 0 };
       c.qty += l.qty;
       c.sales += l.total;
-      cats.set(l.categoryName, c);
+      cats.set(cur.category, c);
 
       for (const t of l.toppings) {
         const x = tops.get(t.id) || { name: t.name, qty: 0, sales: 0 };
