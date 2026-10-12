@@ -31,9 +31,11 @@ const STEPS = {
   making: { label: 'กำลังทำ', short: 'กำลังทำ', cls: 'step-making' },
   ready: { label: 'เสร็จแล้ว', short: 'เสร็จแล้ว', cls: 'step-ready' },
 };
-// "เสร็จแล้ว" on every drink also finishes the queue (the customer is told to pick up).
-const COFFEE_STEPS = ['grinding', 'ground', 'making', 'ready'];
-const OTHER_STEPS = ['making', 'ready'];
+// One button per drink moves it to the next step; ↶ goes back one. "เสร็จแล้ว" on every drink also
+// finishes the queue (the customer is told to pick up).
+const COFFEE_FLOW = [null, 'grinding', 'ground', 'making', 'ready'];
+const OTHER_FLOW = [null, 'making', 'ready'];
+const NEXT_LABEL = { grinding: 'เริ่มบด', ground: 'บดเสร็จ', making: 'เริ่มทำ', ready: 'เสร็จแล้ว' };
 
 export default function Queue() {
   const { toast, confirm } = useUi();
@@ -187,24 +189,36 @@ export default function Queue() {
                 <div className="queue-lines">
                   {x.lines.map((l, i) => {
                     const cur = x.lineSteps?.[i];
-                    const steps = isCoffee(l) ? COFFEE_STEPS : OTHER_STEPS;
+                    const coffee = isCoffee(l);
+                    const flow = coffee ? COFFEE_FLOW : OTHER_FLOW;
+                    const at = Math.max(0, flow.indexOf(cur?.step || null));
+                    const next = flow[at + 1];
+                    const nextLabel = next === 'making' && coffee ? 'เริ่มชง' : NEXT_LABEL[next];
                     return (
                     <div key={i} className={`queue-line ${cur ? `queue-line-${cur.step}` : ''}`}>
                       <div className="sum-row"><b>{l.qty} × {l.name}</b><span>{baht(l.total)}</span></div>
                       <LineDetail line={l} showPrice={false} />
-                      {cur && STEPS[cur.step] && (
-                        <div className={`line-step ${STEPS[cur.step].cls}`}>
-                          {STEPS[cur.step].label} <span className="muted small">· {cur.by} {thTime(cur.at)}</span>
-                        </div>
-                      )}
                       {x.status === 'waiting' && cat.data && (
-                        <div className="step-btns" role="group" aria-label={`ขั้นตอน ${l.name}`}>
-                          {steps.map((k) => (
-                            <button key={k} className={`step-btn ${STEPS[k].cls} ${cur?.step === k ? 'on' : ''}`}
-                              onClick={() => setStep(x, i, cur?.step === k ? null : k)} title={cur?.step === k ? 'แตะอีกครั้งเพื่อยกเลิก' : STEPS[k].label}>
-                              {STEPS[k].short}
-                            </button>
-                          ))}
+                        <div className="line-progress">
+                          <div className="line-progress-info">
+                            <span className={`line-step ${cur ? STEPS[cur.step].cls : 'step-waiting'}`}>{cur ? STEPS[cur.step].label : 'รอทำ'}</span>
+                            <span className="step-dots" aria-hidden="true">
+                              {flow.slice(1).map((k, j) => <span key={k} className={j < at ? 'on' : ''} />)}
+                            </span>
+                            {cur && <span className="muted small">{cur.by} {thTime(cur.at)}</span>}
+                          </div>
+                          <div className="line-progress-actions">
+                            {at > 0 && (
+                              <button className="icon-btn step-undo" onClick={() => setStep(x, i, flow[at - 1])} title="ย้อนกลับ 1 ขั้น" aria-label={`ย้อนสถานะ ${l.name}`}>
+                                <Icon name="undo" size={16} />
+                              </button>
+                            )}
+                            {next && (
+                              <button className={`btn btn-sm step-next ${STEPS[next].cls}`} onClick={() => setStep(x, i, next)}>
+                                {next === 'ready' && <Icon name="check" size={16} />} {nextLabel}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                       {cat.data && (

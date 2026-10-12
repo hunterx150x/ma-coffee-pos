@@ -1316,3 +1316,17 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cx-prog-ready { background: var(--good-50); color: var(--good); }
 .cx-line-ready { border-color: var(--good); }
 .cx-ready-count { margin-left: 8px; font-size: 13px; font-weight: 600; color: var(--good); }
+/* queue: one "next step" button per drink */
+.line-progress { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.line-progress-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.line-progress-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.line-step.step-waiting { background: var(--warn-50); color: var(--warn); }
+.line-progress .line-step { margin-top: 0; }
+.step-dots { display: inline-flex; gap: 3px; }
+.step-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
+.step-dots span.on { background: var(--good); }
+.step-next { min-height: 40px; min-width: 112px; color: #fff; border: 0; font-weight: 700; }
+.step-next.step-grinding, .step-next.step-ground { background: #a5754e; }
+.step-next.step-making { background: var(--info); }
+.step-next.step-ready { background: var(--good); }
+.step-undo { color: var(--muted); }
