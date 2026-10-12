@@ -92,11 +92,14 @@ function migrate(d) {
     }
     done.add('queue-permission');
   }
-  if (!done.has('roast-v1')) {
-    // Coffee menus must pick a roast; the existing "คั่ว…" toppings are the roast choices.
+  // Coffee menus must pick a roast; the existing "คั่ว…" toppings are the roast choices.
+  // v2 repeats v1 for data that was marked done without the flags being saved. Only unset flags are filled,
+  // so a switch the owner turned off stays off.
+  if (!done.has('roast-v2')) {
     for (const c of d.categories) if (c.requireRoast === undefined) c.requireRoast = /coffee|กาแฟ/i.test(c.name);
     for (const t of d.toppings) if (t.isRoast === undefined) t.isRoast = /^คั่ว/.test(t.name);
     done.add('roast-v1');
+    done.add('roast-v2');
   }
   if (!done.has('audit-v1')) {
     // Extra password for the owner-only activity log (kept hashed, outside backups).
