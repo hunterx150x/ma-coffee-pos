@@ -498,9 +498,10 @@ function PaySection({ token, q, onClaimed }) {
   const isShopQr = q.payment?.mode === 'shopqr' && !!q.payment.shopQr;
   const isAccount = q.payment?.mode === 'account' && !!q.payment.accountNo;
   const claim = q.payment?.claimedAt ? q.payment.claimMethod || 'transfer' : null;
-  // Chose "pay cash" but changed their mind: show the transfer QR again (nothing changes until they send a slip).
-  const [showTransfer, setShowTransfer] = useState(false);
-  const cashChosen = claim === 'cash' && !showTransfer;
+  // One card, two choices: transfer (QR + slip) or cash at the counter. Picking cash notifies the shop right away;
+  // switching back to transfer only shows the QR again (nothing changes until a slip is sent).
+  const [picked, setPicked] = useState(null);
+  const choice = picked || (claim === 'cash' ? 'cash' : claim === 'transfer' ? 'transfer' : null);
 
   useEffect(() => {
     const payload = transferQrPayload(q.payment, ppId, q.total);
@@ -530,7 +531,7 @@ function PaySection({ token, q, onClaimed }) {
     try {
       await publicApi(`/queues/${token}/paid`, { method: 'POST', body });
       setSlip(null);
-      setShowTransfer(false);
+      setPicked(null);
       onClaimed();
     } catch (e) {
       setErr(e.message);
@@ -540,76 +541,62 @@ function PaySection({ token, q, onClaimed }) {
   };
 
   const canTransfer = !!(qr || isAccount);
+  const pickCash = () => (claim === 'cash' ? setPicked('cash') : sendClaim({ method: 'cash' }));
   return (
     <section className="cx-pay">
       <div className="due"><span>ยอดที่ต้องชำระ</span><b>{baht(q.total)}</b></div>
-      {cashChosen ? (
-        <div className="cx-pay-card cx-cash-card">
-          <div className="cx-pay-title"><Icon name="cash" size={18} /> ชำระด้วยเงินสด</div>
-          <div className="cx-pay-amount">{baht(q.total)}</div>
-          <div className="cx-claimed cx-claimed-cash"><Icon name="check" size={18} stroke={3} /> แจ้งร้านแล้ว · ชำระเงินสดที่เคาน์เตอร์ตอนรับเครื่องดื่ม</div>
-          {canTransfer && <button className="btn btn-sm btn-ghost" onClick={() => setShowTransfer(true)}>เปลี่ยนเป็นโอนเงิน</button>}
-        </div>
-      ) : canTransfer ? (
-        <div className="cx-pay-card">
-          {isAccount ? (
-            <>
-              <div className="cx-pay-title"><Icon name="transfer" size={18} /> โอนเข้าบัญชีร้าน</div>
-              <div className="cx-pay-amount">{baht(q.total)}</div>
-              <BankAccount payment={q.payment} />
-            </>
-          ) : (
-            <>
-              <div className="cx-pay-title"><Icon name="qr" size={18} /> {isShopQr ? 'สแกนจ่ายผ่านแอปธนาคาร' : 'โอนผ่าน QR พร้อมเพย์'}</div>
-              <img className="cx-pay-qr" src={qr} alt={`QR รับเงิน ${baht(q.total)}`} />
-              <div className="cx-pay-amount">{baht(q.total)}</div>
-              <div className="muted small">กดค้างที่รูป QR เพื่อบันทึก แล้วเปิดสแกนจากแอปธนาคาร</div>
-              <div className="cx-pay-tools">
-                <a className="btn btn-sm btn-outline" href={qr} download={`pay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
-                {!isShopQr && ppId && <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>}
-              </div>
-            </>
+      <div className="cx-pay-card">
+        <div className="cx-pay-title">เลือกวิธีชำระเงิน</div>
+        <div className={`cx-pay-choice ${canTransfer ? '' : 'cx-pay-choice-one'}`} role="group" aria-label="วิธีชำระเงิน">
+          {canTransfer && (
+            <button className={`cx-choice cx-choice-transfer ${choice === 'transfer' ? 'on' : ''}`} onClick={() => setPicked('transfer')} disabled={busy}>
+              <Icon name="qr" size={22} /><span>{isAccount ? 'โอนเข้าบัญชี' : 'สแกนจ่าย / โอน'}</span>
+            </button>
           )}
+          <button className={`cx-choice cx-choice-cash ${choice === 'cash' ? 'on' : ''}`} onClick={pickCash} disabled={busy}>
+            <Icon name="cash" size={22} /><span>เงินสดที่ร้าน</span>
+          </button>
+        </div>
 
-          {claim === 'transfer' ? (
-            <div className="cx-claimed">
-              <Icon name="check" size={18} stroke={3} /> แจ้งโอนแล้ว{q.payment.hasSlip ? ' (แนบสลิป)' : ''} · รอพนักงานตรวจสอบ
-            </div>
-          ) : (
-            <div className="cx-claim">
-              <div className="muted small">โอนเสร็จแล้ว แนบสลิปเพื่อแจ้งร้าน</div>
-              {slip ? <img className="cx-slip" src={slip} alt="สลิป" /> : (
-                <button className="cx-slip-drop" onClick={() => fileRef.current?.click()}>
-                  <Icon name="upload" size={22} /><span>แตะเพื่อแนบสลิปการโอน</span>
-                </button>
-              )}
-              <div className="cx-pay-tools">
-                {slip && (
-                  <button className="btn btn-sm btn-ghost" onClick={() => fileRef.current?.click()}>
-                    <Icon name="upload" size={16} /> เปลี่ยนสลิป
+        {choice === 'cash' && (
+          <div className="cx-claimed cx-claimed-cash"><Icon name="check" size={18} stroke={3} /> แจ้งร้านแล้ว · ชำระเงินสดที่เคาน์เตอร์ตอนรับเครื่องดื่ม</div>
+        )}
+
+        {choice === 'transfer' && canTransfer && (
+          <div className="cx-pay-body">
+            {isAccount ? <BankAccount payment={q.payment} /> : (
+              <>
+                <img className="cx-pay-qr" src={qr} alt={`QR รับเงิน ${baht(q.total)}`} />
+                <div className="cx-pay-tools">
+                  <a className="btn btn-sm btn-outline" href={qr} download={`pay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
+                  {!isShopQr && ppId && <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>}
+                </div>
+                <div className="muted small">ระบุยอด {baht(q.total)} ให้แล้ว · กดค้างที่ QR เพื่อบันทึกรูป</div>
+              </>
+            )}
+            {claim === 'transfer' ? (
+              <div className="cx-claimed"><Icon name="check" size={18} stroke={3} /> แจ้งโอนแล้ว{q.payment.hasSlip ? ' (แนบสลิป)' : ''} · รอพนักงานตรวจสอบ</div>
+            ) : (
+              <div className="cx-claim">
+                {slip ? (
+                  <button className="cx-slip-btn" onClick={() => fileRef.current?.click()} aria-label="เปลี่ยนสลิป">
+                    <img className="cx-slip" src={slip} alt="สลิป" /><span className="small">แตะเพื่อเปลี่ยนสลิป</span>
+                  </button>
+                ) : (
+                  <button className="cx-slip-drop" onClick={() => fileRef.current?.click()}>
+                    <Icon name="upload" size={20} /><span>แนบสลิปการโอน</span>
                   </button>
                 )}
-                <button className="btn btn-success" disabled={busy || !slip} onClick={() => sendClaim({ slip })}>
-                  {busy ? 'กำลังแจ้ง...' : 'แจ้งโอนแล้ว'}
+                <button className="btn btn-success btn-block" disabled={busy || !slip} onClick={() => sendClaim({ slip })}>
+                  {busy ? 'กำลังแจ้ง...' : slip ? 'แจ้งโอนแล้ว' : 'แนบสลิปก่อนแจ้งโอน'}
                 </button>
+                <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSlip(e.target.files[0]); e.target.value = ''; }} />
               </div>
-              {!slip && <div className="muted small">ต้องแนบสลิปก่อน จึงจะกดแจ้งโอนได้</div>}
-              <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSlip(e.target.files[0]); e.target.value = ''; }} />
-            </div>
-          )}
-          {err && <div className="field-error">{err}</div>}
-        </div>
-      ) : null}
-
-      {!cashChosen && claim !== 'transfer' && (
-        <div className="cx-cash-choice">
-          {canTransfer && <div className="cx-or-line"><span>หรือ</span></div>}
-          <button className="btn btn-outline btn-block btn-lg" disabled={busy} onClick={() => sendClaim({ method: 'cash' })}>
-            <Icon name="cash" size={20} /> ชำระด้วยเงินสดที่ร้าน
-          </button>
-          {!canTransfer && err && <div className="field-error">{err}</div>}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+        {err && <div className="field-error">{err}</div>}
+      </div>
     </section>
   );
 }

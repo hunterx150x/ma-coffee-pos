@@ -708,11 +708,11 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cx-pay .due { margin-top: 0; }
 .cx-pay-card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: var(--shadow); }
 .cx-pay-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #113566; }
-.cx-pay-qr { width: min(260px, 80vw); height: auto; border-radius: 12px; border: 1px solid var(--line); }
+.cx-pay-qr { width: min(220px, 64vw); height: auto; border-radius: 12px; border: 1px solid var(--line); }
 .cx-pay-amount { font-size: 26px; font-weight: 700; }
 .cx-pay-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .cx-claim { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 10px; margin-top: 4px; border-top: 1px dashed var(--line-2); }
-.cx-slip { max-width: 160px; max-height: 220px; border-radius: 10px; border: 1px solid var(--line); }
+.cx-slip { max-width: 110px; max-height: 150px; border-radius: 10px; border: 1px solid var(--line); }
 .cx-claimed { width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 12px; background: var(--good-50); color: var(--good); font-weight: 500; }
 /* staff side */
 .queue-claim { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--info-50); color: var(--info); font-size: 13.5px; font-weight: 500; }
@@ -1122,3 +1122,16 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cx-or-line::before, .cx-or-line::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .cx-claimed-cash { background: var(--good-50); color: var(--good); }
 .queue-claim-cash { background: var(--good-50); color: var(--good); }
+
+/* customer pay: one card, two clearly different choices */
+.cx-pay-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.cx-pay-choice-one { grid-template-columns: 1fr; }
+.cx-choice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 78px; padding: 10px; border-radius: 14px; border: 2px solid; font-weight: 700; font-size: 15px; cursor: pointer; transition: background .15s, color .15s; }
+.cx-choice-transfer { border-color: #2a78d6; color: #1f5fae; background: #eef5fd; }
+.cx-choice-transfer.on { background: #2a78d6; color: #fff; }
+.cx-choice-cash { border-color: var(--good); color: var(--good); background: var(--good-50); }
+.cx-choice-cash.on { background: var(--good); color: #fff; }
+.cx-pay-body { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line-2); }
+.cx-claim { border-top: 0; padding-top: 2px; margin-top: 0; }
+.cx-slip-drop { padding: 12px; flex-direction: row; justify-content: center; }
+.cx-slip-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; color: var(--muted); cursor: pointer; }
