@@ -1086,3 +1086,4 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .bank-account-no { font-size: 18px; letter-spacing: .5px; }
 .bank-account-compact .bank-account-no { font-size: 16px; }
 .cx-or { margin-top: 6px; }
+.pay-preview-col { flex-direction: column; align-items: stretch; gap: 8px; }

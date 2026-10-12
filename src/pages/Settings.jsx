@@ -363,6 +363,11 @@ async function decodeQrImage(file) {
 }
 
 const SAMPLE_AMOUNT = 50;
+const PAY_MODES = [
+  { key: 'shopqr', label: 'QR ร้าน (K SHOP)' },
+  { key: 'promptpay', label: 'พร้อมเพย์' },
+  { key: 'account', label: 'เลขบัญชี' },
+];
 const BANKS = ['กสิกรไทย (KBank)', 'ไทยพาณิชย์ (SCB)', 'กรุงเทพ (BBL)', 'กรุงไทย (KTB)', 'กรุงศรีอยุธยา (BAY)', 'ทหารไทยธนชาต (ttb)',
   'ออมสิน (GSB)', 'ธ.ก.ส. (BAAC)', 'อาคารสงเคราะห์ (GHB)', 'ยูโอบี (UOB)', 'ซีไอเอ็มบี ไทย (CIMB)', 'เกียรตินาคินภัทร (KKP)',
   'แลนด์ แอนด์ เฮ้าส์ (LH Bank)', 'ทิสโก้ (TISCO)', 'ไอซีบีซี (ไทย) (ICBC)', 'อิสลามแห่งประเทศไทย (iBank)'];
@@ -384,7 +389,7 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
     setPreview(null);
     const payload = pay.mode === 'shopqr'
       ? (check?.ok ? thaiQrWithAmount(pay.shopQr, SAMPLE_AMOUNT) : null)
-      : promptPayPayload(promptPayId, SAMPLE_AMOUNT);
+      : pay.mode === 'account' ? null : promptPayPayload(promptPayId, SAMPLE_AMOUNT);
     if (payload) QRCode.toDataURL(payload, { margin: 1, width: 200 }).then(setPreview).catch(() => setPreview(null));
   }, [pay.mode, pay.shopQr, promptPayId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -405,9 +410,11 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
     <div className="card form pay-card">
       <h3 className="card-title">การรับเงินโอน</h3>
       <div className="type-switch pay-mode" role="group" aria-label="วิธีรับเงินโอน">
-        <button className={pay.mode === 'shopqr' ? 'active' : ''} onClick={() => set({ mode: 'shopqr' })}>QR ร้าน (บัญชีธนาคาร / K SHOP)</button>
-        <button className={pay.mode !== 'shopqr' ? 'active' : ''} onClick={() => set({ mode: 'promptpay' })}>พร้อมเพย์</button>
+        {PAY_MODES.map((m) => (
+          <button key={m.key} className={(pay.mode || 'promptpay') === m.key ? 'active' : ''} onClick={() => { setErr(''); set({ mode: m.key }); }}>{m.label}</button>
+        ))}
       </div>
+      <p className="muted small">เลือกได้ 1 วิธี — หน้าชำระเงินของพนักงานและหน้าคิวของลูกค้าจะแสดงเฉพาะวิธีนี้</p>
 
       {pay.mode === 'shopqr' ? (
         <>
@@ -428,6 +435,30 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
           )}
           {pay.shopQr && check && !check.ok && <div className="field-error">{check.error}</div>}
         </>
+      ) : pay.mode === 'account' ? (
+        <div className="pay-bank">
+          <p className="muted small">ลูกค้ากรอกเลขบัญชีเพื่อโอนเอง (ไม่มี QR) — ระบบแสดงยอดที่ต้องโอนพร้อมปุ่มคัดลอกเลขบัญชี</p>
+          <div className="form-grid">
+            <Field label="ธนาคาร">
+              <select className="input" value={bankChoice} onChange={(e) => { setOtherBank(e.target.value === OTHER_BANK); set({ bankName: e.target.value === OTHER_BANK ? '' : e.target.value }); }}>
+                <option value="">— เลือกธนาคาร —</option>
+                {BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
+                <option value={OTHER_BANK}>อื่นๆ (พิมพ์เอง)</option>
+              </select>
+              {bankChoice === OTHER_BANK && (
+                <input className="input other-cat" value={pay.bankName} maxLength={60} autoFocus onChange={(e) => set({ bankName: e.target.value })} placeholder="ชื่อธนาคาร" />
+              )}
+            </Field>
+            <Field label="เลขบัญชี *"><input className="input" inputMode="numeric" value={pay.accountNo} maxLength={30} onChange={(e) => set({ accountNo: e.target.value })} placeholder="เช่น 123-4-56789-0" /></Field>
+            <Field label="ชื่อบัญชี"><input className="input" value={pay.accountName} maxLength={80} onChange={(e) => set({ accountName: e.target.value })} placeholder="ชื่อบัญชีตามธนาคาร" /></Field>
+          </div>
+          {pay.accountNo && (
+            <div className="pay-preview pay-preview-col">
+              <b className="small">ตัวอย่างที่ลูกค้าเห็น</b>
+              <BankAccount payment={pay} compact />
+            </div>
+          )}
+        </div>
       ) : (
         <Field label="เลขพร้อมเพย์ (เบอร์โทร / เลขบัตรประชาชน)" hint="ใช้สร้าง QR รับเงินโอนพร้อมยอดเงินอัตโนมัติ">
           <input className="input" inputMode="numeric" value={promptPayId || ''} onChange={(e) => setPromptPayId(e.target.value)} />
@@ -445,24 +476,6 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
         </div>
       )}
 
-      <div className="pay-bank">
-        <div className="muted small">เลขบัญชีสำหรับลูกค้าที่โอนด้วยการกรอกเลขบัญชี (ไม่บังคับ)</div>
-        <div className="form-grid">
-          <Field label="ธนาคาร">
-            <select className="input" value={bankChoice} onChange={(e) => { setOtherBank(e.target.value === OTHER_BANK); set({ bankName: e.target.value === OTHER_BANK ? '' : e.target.value }); }}>
-              <option value="">— เลือกธนาคาร —</option>
-              {BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
-              <option value={OTHER_BANK}>อื่นๆ (พิมพ์เอง)</option>
-            </select>
-            {bankChoice === OTHER_BANK && (
-              <input className="input other-cat" value={pay.bankName} maxLength={60} autoFocus onChange={(e) => set({ bankName: e.target.value })} placeholder="ชื่อธนาคาร" />
-            )}
-          </Field>
-          <Field label="เลขบัญชี"><input className="input" inputMode="numeric" value={pay.accountNo} maxLength={30} onChange={(e) => set({ accountNo: e.target.value })} placeholder="เช่น 123-4-56789-0" /></Field>
-          <Field label="ชื่อบัญชี"><input className="input" value={pay.accountName} maxLength={80} onChange={(e) => set({ accountName: e.target.value })} placeholder="ชื่อบัญชีตามธนาคาร" /></Field>
-        </div>
-        {pay.accountNo && <BankAccount payment={pay} compact />}
-      </div>
     </div>
   );
 }

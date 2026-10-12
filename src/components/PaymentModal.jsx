@@ -22,8 +22,10 @@ export default function PaymentModal({ open, total, settings, onClose, onPay, de
     const payload = transferQrPayload(settings.payment, settings.promptPayId, total);
     if (payload) QRCode.toDataURL(payload, { margin: 1, width: 240 }).then(setQr).catch(() => setQr(null));
   }, [method, total, settings.promptPayId, settings.payment]);
-  const shopQr = settings.payment?.mode === 'shopqr' && settings.payment.shopQr;
-  const hasQr = shopQr || settings.promptPayId;
+  const mode = settings.payment?.mode || 'promptpay';
+  const shopQr = mode === 'shopqr' && settings.payment.shopQr;
+  const account = mode === 'account' && settings.payment.accountNo ? settings.payment : null;
+  const hasQr = shopQr || (mode === 'promptpay' && settings.promptPayId);
 
   const received = cash === '' ? total : Number(cash);
   const change = received - total;
@@ -91,10 +93,14 @@ export default function PaymentModal({ open, total, settings, onClose, onPay, de
                 <div className="muted small">{shopQr ? `QR ร้าน · ระบุยอด ${baht(total)} ให้แล้ว` : `PromptPay: ${settings.promptPayId}`}</div>
               </>
             ) : <Loading />
-          ) : !settings.payment?.accountNo && (
-            <p className="muted">ตรวจสอบยอดโอนจากลูกค้า แล้วกด “ยืนยันรับเงิน”<br /><span className="small">(ตั้งค่า QR รับเงินที่ “ตั้งค่าร้าน” เพื่อแสดง QR พร้อมยอดอัตโนมัติ)</span></p>
+          ) : account ? (
+            <>
+              <div className="muted small">ให้ลูกค้าโอน {baht(total)} เข้าบัญชีนี้</div>
+              <BankAccount payment={account} compact />
+            </>
+          ) : (
+            <p className="muted">ตรวจสอบยอดโอนจากลูกค้า แล้วกด “ยืนยันรับเงิน”<br /><span className="small">(ตั้งค่าการรับเงินโอนที่ “ตั้งค่าร้าน” เพื่อแสดง QR พร้อมยอดอัตโนมัติ)</span></p>
           )}
-          <BankAccount payment={settings.payment} compact />
         </div>
       )}
       {err && <div className="field-error">{err}</div>}

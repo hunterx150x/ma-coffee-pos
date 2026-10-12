@@ -495,6 +495,7 @@ function PaySection({ token, q, onClaimed }) {
   const fileRef = useRef(null);
   const ppId = q.payment?.promptPayId;
   const isShopQr = q.payment?.mode === 'shopqr' && !!q.payment.shopQr;
+  const isAccount = q.payment?.mode === 'account' && !!q.payment.accountNo;
 
   useEffect(() => {
     const payload = transferQrPayload(q.payment, ppId, q.total);
@@ -535,18 +536,26 @@ function PaySection({ token, q, onClaimed }) {
   return (
     <section className="cx-pay">
       <div className="due"><span>ยอดที่ต้องชำระ</span><b>{baht(q.total)}</b></div>
-      {qr ? (
+      {qr || isAccount ? (
         <div className="cx-pay-card">
-          <div className="cx-pay-title"><Icon name="qr" size={18} /> {isShopQr ? 'สแกนจ่ายผ่านแอปธนาคาร' : 'โอนผ่าน QR พร้อมเพย์'}</div>
-          <img className="cx-pay-qr" src={qr} alt={`QR รับเงิน ${baht(q.total)}`} />
-          <div className="cx-pay-amount">{baht(q.total)}</div>
-          <div className="muted small">กดค้างที่รูป QR เพื่อบันทึก แล้วเปิดสแกนจากแอปธนาคาร</div>
-          <div className="cx-pay-tools">
-            <a className="btn btn-sm btn-outline" href={qr} download={`pay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
-            {!isShopQr && ppId && <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>}
-          </div>
-          {q.payment.accountNo && <div className="muted small cx-or">หรือโอนเข้าบัญชีด้วยยอด {baht(q.total)}</div>}
-          <BankAccount payment={q.payment} />
+          {isAccount ? (
+            <>
+              <div className="cx-pay-title"><Icon name="transfer" size={18} /> โอนเข้าบัญชีร้าน</div>
+              <div className="cx-pay-amount">{baht(q.total)}</div>
+              <BankAccount payment={q.payment} />
+            </>
+          ) : (
+            <>
+              <div className="cx-pay-title"><Icon name="qr" size={18} /> {isShopQr ? 'สแกนจ่ายผ่านแอปธนาคาร' : 'โอนผ่าน QR พร้อมเพย์'}</div>
+              <img className="cx-pay-qr" src={qr} alt={`QR รับเงิน ${baht(q.total)}`} />
+              <div className="cx-pay-amount">{baht(q.total)}</div>
+              <div className="muted small">กดค้างที่รูป QR เพื่อบันทึก แล้วเปิดสแกนจากแอปธนาคาร</div>
+              <div className="cx-pay-tools">
+                <a className="btn btn-sm btn-outline" href={qr} download={`pay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
+                {!isShopQr && ppId && <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>}
+              </div>
+            </>
+          )}
 
           {q.payment.claimedAt ? (
             <div className="cx-claimed">
@@ -568,7 +577,7 @@ function PaySection({ token, q, onClaimed }) {
           {err && <div className="field-error">{err}</div>}
         </div>
       ) : null}
-      <div className="muted small cx-hint">{qr ? 'หรือชำระด้วยเงินสด / สแกนที่หน้าร้านก็ได้' : 'ชำระเงินที่หน้าร้านเมื่อรับเครื่องดื่ม'}</div>
+      <div className="muted small cx-hint">{qr || isAccount ? 'หรือชำระด้วยเงินสดที่หน้าร้านก็ได้' : 'ชำระเงินที่หน้าร้านเมื่อรับเครื่องดื่ม'}</div>
     </section>
   );
 }

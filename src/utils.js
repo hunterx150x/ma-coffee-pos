@@ -77,11 +77,12 @@ export function downloadCsv(filename, rows) {
 }
 
 /**
- * QR text for a transfer of `amount`: the shop's own Thai QR with the amount filled in when chosen in settings,
- * otherwise a PromptPay QR. null when neither is set up.
+ * QR text for a transfer of `amount` with the method chosen in settings: the shop's own Thai QR or PromptPay,
+ * both with the amount filled in. null for "bank account" (no QR) or when nothing is set up.
  */
 export function transferQrPayload(payment, promptPayId, amount) {
-  if (payment?.mode === 'shopqr' && payment.shopQr) return thaiQrWithAmount(payment.shopQr, amount);
+  if (payment?.mode === 'shopqr') return payment.shopQr ? thaiQrWithAmount(payment.shopQr, amount) : null;
+  if (payment?.mode === 'account') return null;
   return promptPayPayload(promptPayId, amount);
 }
 

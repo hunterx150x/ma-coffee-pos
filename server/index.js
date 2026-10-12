@@ -1235,14 +1235,14 @@ app.delete('/api/users/:id', ownerOnly, h((req) => {
   return { ok: true };
 }));
 
-/** What the customer's pay page needs: the shop QR (when chosen) and the account to type in by hand. */
+/** What the customer's pay page needs — only the method the shop chose. */
 function publicPayment(s) {
   const p = s.payment || {};
-  return {
-    mode: p.mode === 'shopqr' && p.shopQr ? 'shopqr' : 'promptpay',
-    shopQr: p.mode === 'shopqr' ? p.shopQr || '' : '',
-    bankName: p.bankName || '', accountNo: p.accountNo || '', accountName: p.accountName || '',
-  };
+  if (p.mode === 'shopqr' && p.shopQr) return { mode: 'shopqr', shopQr: p.shopQr, promptPayId: '' };
+  if (p.mode === 'account' && p.accountNo) {
+    return { mode: 'account', bankName: p.bankName || '', accountNo: p.accountNo, accountName: p.accountName || '', promptPayId: '' };
+  }
+  return { mode: 'promptpay' };
 }
 
 // ---------- settings & backup ----------
@@ -1266,8 +1266,10 @@ app.put('/api/settings', need('settings'), h((req, res) => {
       if (!c.ok) fail(400, c.error);
       shopQr = thaiQrWithAmount(str(p.shopQr, 600), 0); // stored without an amount; each bill adds its own
     }
-    const mode = p.mode === 'shopqr' ? 'shopqr' : 'promptpay';
+    // One way to receive transfers: the shop QR, PromptPay, or a bank account typed in by the customer.
+    const mode = ['shopqr', 'account'].includes(p.mode) ? p.mode : 'promptpay';
     if (mode === 'shopqr' && !shopQr) fail(400, 'กรุณาอัปโหลด QR รับเงินของร้าน');
+    if (mode === 'account' && !str(p.accountNo, 30).replace(/[^0-9]/g, '')) fail(400, 'กรุณากรอกเลขบัญชี');
     s.payment = {
       mode, shopQr,
       bankName: str(p.bankName, 60), accountNo: str(p.accountNo, 30).replace(/[^0-9-]/g, ''), accountName: str(p.accountName, 80),
