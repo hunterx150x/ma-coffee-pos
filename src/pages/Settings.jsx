@@ -363,12 +363,20 @@ async function decodeQrImage(file) {
 }
 
 const SAMPLE_AMOUNT = 50;
+const BANKS = ['กสิกรไทย (KBank)', 'ไทยพาณิชย์ (SCB)', 'กรุงเทพ (BBL)', 'กรุงไทย (KTB)', 'กรุงศรีอยุธยา (BAY)', 'ทหารไทยธนชาต (ttb)',
+  'ออมสิน (GSB)', 'ธ.ก.ส. (BAAC)', 'อาคารสงเคราะห์ (GHB)', 'ยูโอบี (UOB)', 'ซีไอเอ็มบี ไทย (CIMB)', 'เกียรตินาคินภัทร (KKP)',
+  'แลนด์ แอนด์ เฮ้าส์ (LH Bank)', 'ทิสโก้ (TISCO)', 'ไอซีบีซี (ไทย) (ICBC)', 'อิสลามแห่งประเทศไทย (iBank)'];
+const OTHER_BANK = '__other__';
 
 /** How customers transfer: the shop's own Thai QR (amount filled in per bill) or PromptPay, plus the account number. */
 function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
   const [err, setErr] = useState('');
   const [preview, setPreview] = useState(null);
   const fileRef = useRef(null);
+  const [otherBank, setOtherBank] = useState(false);
+  // A name saved before the list existed (e.g. "กสิกรไทย") still selects its bank.
+  const listed = BANKS.find((b) => b === pay.bankName || b.split(' (')[0] === pay.bankName);
+  const bankChoice = otherBank || (pay.bankName && !listed) ? OTHER_BANK : listed || '';
   const check = pay.shopQr ? checkThaiQr(pay.shopQr) : null;
   const set = (patch) => setPay({ ...pay, ...patch });
 
@@ -440,11 +448,19 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
       <div className="pay-bank">
         <div className="muted small">เลขบัญชีสำหรับลูกค้าที่โอนด้วยการกรอกเลขบัญชี (ไม่บังคับ)</div>
         <div className="form-grid">
-          <Field label="ธนาคาร"><input className="input" value={pay.bankName} maxLength={60} onChange={(e) => set({ bankName: e.target.value })} placeholder="เช่น กสิกรไทย" list="bank-names" /></Field>
+          <Field label="ธนาคาร">
+            <select className="input" value={bankChoice} onChange={(e) => { setOtherBank(e.target.value === OTHER_BANK); set({ bankName: e.target.value === OTHER_BANK ? '' : e.target.value }); }}>
+              <option value="">— เลือกธนาคาร —</option>
+              {BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
+              <option value={OTHER_BANK}>อื่นๆ (พิมพ์เอง)</option>
+            </select>
+            {bankChoice === OTHER_BANK && (
+              <input className="input other-cat" value={pay.bankName} maxLength={60} autoFocus onChange={(e) => set({ bankName: e.target.value })} placeholder="ชื่อธนาคาร" />
+            )}
+          </Field>
           <Field label="เลขบัญชี"><input className="input" inputMode="numeric" value={pay.accountNo} maxLength={30} onChange={(e) => set({ accountNo: e.target.value })} placeholder="เช่น 123-4-56789-0" /></Field>
           <Field label="ชื่อบัญชี"><input className="input" value={pay.accountName} maxLength={80} onChange={(e) => set({ accountName: e.target.value })} placeholder="ชื่อบัญชีตามธนาคาร" /></Field>
         </div>
-        <datalist id="bank-names">{['กสิกรไทย', 'ไทยพาณิชย์', 'กรุงเทพ', 'กรุงไทย', 'กรุงศรีอยุธยา', 'ทีทีบี', 'ออมสิน', 'ธ.ก.ส.'].map((b) => <option key={b} value={b} />)}</datalist>
         {pay.accountNo && <BankAccount payment={pay} compact />}
       </div>
     </div>
