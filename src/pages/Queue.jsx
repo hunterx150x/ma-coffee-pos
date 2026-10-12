@@ -23,6 +23,15 @@ const FILTERS = [
   { key: 'all', label: 'ทั้งหมด', match: () => true },
 ];
 const FALLBACK_POLL_MS = 60000;
+// Bar steps per drink. Coffee (a category that needs a roast) goes grind → wait to brew → make; others just "make".
+// Customers only ever see "กำลังทำ".
+const STEPS = {
+  grinding: { label: 'กำลังบดเมล็ดกาแฟ', short: 'กำลังบด', cls: 'step-grinding' },
+  ground: { label: 'บดแล้วรอชง', short: 'บดแล้วรอชง', cls: 'step-ground' },
+  making: { label: 'กำลังทำ', short: 'กำลังทำ', cls: 'step-making' },
+};
+const COFFEE_STEPS = ['grinding', 'ground', 'making'];
+const OTHER_STEPS = ['making'];
 
 export default function Queue() {
   const { toast, confirm } = useUi();
@@ -66,6 +75,21 @@ export default function Queue() {
   const rows = all.filter(f.match).filter((x) => !term || x.name.toLowerCase().includes(term) || String(x.queueNo) === term);
   const openTotal = all.filter(FILTERS[0].match).reduce((s, x) => s + x.total, 0);
   const singleDay = range.from === range.to;
+
+  const setStep = async (queue, index, step) => {
+    try {
+      await api(`/queues/${queue.id}/lines/${index}/step`, { method: 'POST', body: { step } });
+      changed();
+    } catch (e) {
+      toast(e.message, 'error');
+      list.reload();
+    }
+  };
+  const isCoffee = (l) => {
+    const c = cat.data;
+    const catId = c?.menuItems.find((m) => m.id === l.menuItemId)?.categoryId || l.categoryId;
+    return !!c?.categories.find((x) => x.id === catId)?.requireRoast;
+  };
 
   const setStatus = async (queue, status, extra = {}) => {
     try {
@@ -143,7 +167,9 @@ export default function Queue() {
                       {open && singleDay && ` · รอ ${mins} นาที`} · {x.staffName}
                     </div>
                   </div>
-                  <span className={`badge ${STATUS[x.status].cls}`}>{STATUS[x.status].label}</span>
+                  {x.status === 'waiting' && Object.keys(x.lineSteps || {}).length > 0
+                    ? <span className="badge badge-making">กำลังทำ</span>
+                    : <span className={`badge ${STATUS[x.status].cls}`}>{STATUS[x.status].label}</span>}
                 </header>
                 {x.note && <div className="line-note">{x.note}</div>}
                 {x.paymentClaim && x.status !== 'paid' && (x.paymentClaim.method === 'cash' ? (
@@ -157,15 +183,34 @@ export default function Queue() {
                   </div>
                 ))}
                 <div className="queue-lines">
-                  {x.lines.map((l, i) => (
-                    <div key={i} className="queue-line">
+                  {x.lines.map((l, i) => {
+                    const cur = x.lineSteps?.[i];
+                    const steps = isCoffee(l) ? COFFEE_STEPS : OTHER_STEPS;
+                    return (
+                    <div key={i} className={`queue-line ${cur ? `queue-line-${cur.step}` : ''}`}>
                       <div className="sum-row"><b>{l.qty} × {l.name}</b><span>{baht(l.total)}</span></div>
                       <LineDetail line={l} showPrice={false} />
+                      {cur && STEPS[cur.step] && (
+                        <div className={`line-step ${STEPS[cur.step].cls}`}>
+                          {STEPS[cur.step].label} <span className="muted small">· {cur.by} {thTime(cur.at)}</span>
+                        </div>
+                      )}
+                      {x.status === 'waiting' && cat.data && (
+                        <div className="step-btns" role="group" aria-label={`ขั้นตอน ${l.name}`}>
+                          {steps.map((k) => (
+                            <button key={k} className={`step-btn ${STEPS[k].cls} ${cur?.step === k ? 'on' : ''}`}
+                              onClick={() => setStep(x, i, cur?.step === k ? null : k)} title={cur?.step === k ? 'แตะอีกครั้งเพื่อยกเลิก' : STEPS[k].label}>
+                              {STEPS[k].short}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {cat.data && (
                         <button className="btn btn-sm btn-ghost btn-howto" onClick={() => setHowToLine(l)}><Icon name="book" size={16} /> ดูวิธีทำ</button>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="sum-row sum-total"><span>{x.cups} แก้ว</span><span>{baht(x.total)}</span></div>
                 {x.status === 'paid' && <div className="muted small">ชำระแล้ว · บิล {x.orderNo}</div>}

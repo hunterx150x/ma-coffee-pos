@@ -375,6 +375,7 @@ function MyQueues({ list, go }) {
 // ---------------------------------------------------------------- tracking
 const STATUS_TEXT = {
   waiting: { title: 'รอทำเครื่องดื่ม', cls: 'waiting' },
+  making: { title: 'กำลังทำเครื่องดื่ม', cls: 'making' }, // any bar step (grinding, brewing...) shows just this
   done: { title: 'เครื่องดื่มพร้อมแล้ว!', cls: 'done' },
   paid: { title: 'ชำระเงินเรียบร้อย', cls: 'paid' },
   cancelled: { title: 'คิวนี้ถูกยกเลิก', cls: 'cancelled' },
@@ -430,7 +431,7 @@ function TrackQueue({ token, go }) {
     );
   }
   if (!q) return <div className="cx-body"><Loading /></div>;
-  const st = STATUS_TEXT[q.status];
+  const st = STATUS_TEXT[q.making ? 'making' : q.status];
 
   return (
     <>
@@ -444,7 +445,7 @@ function TrackQueue({ token, go }) {
           <div className="cx-ticket-name">{q.name}</div>
           <div className="cx-ticket-status">{st.title}</div>
           {q.status === 'waiting' && (
-            q.ahead > 0 ? (
+            q.making ? <div className="cx-ahead"><b>กำลังทำเครื่องดื่มของคุณ</b> อีกสักครู่นะคะ ☕</div> : q.ahead > 0 ? (
               <div className="cx-ahead">
                 <div><b className="cx-ahead-num">{q.ahead}</b> คิว</div>
                 <div>จะถึงคิวของคุณ · ตอนนี้อยู่ลำดับที่ {q.position} จาก {q.waitingTotal}</div>

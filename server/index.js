@@ -244,6 +244,8 @@ app.get('/api/public/queues/:token', h((req) => {
     queueNo: q.queueNo,
     name: q.name,
     status: q.status,
+    // staff started at least one drink (grinding / waiting to brew / making all show as "กำลังทำ")
+    making: q.status === 'waiting' && Object.keys(q.lineSteps || {}).length > 0,
     createdAt: q.createdAt,
     ahead,
     position: q.status === 'waiting' ? ahead + 1 : 0,
@@ -1113,6 +1115,33 @@ app.post('/api/queues/:id/status', need('queue'), h((req, res) => {
   save();
   events.broadcast('queues', { id: q.id, status: q.status });
   res.locals.audit = `คิว ${q.queueNo} ${q.name || ''} ${STATUS_TH[prev] || prev}→${STATUS_TH[status]}${q.cancelReason && status === 'cancelled' ? ` · เหตุผล: ${q.cancelReason}` : ''} · ฿${q.total} · ${itemsText(q.lines)}`;
+  return q;
+}));
+
+// Progress of each drink in a waiting queue, so every position at the bar knows where it is.
+// Coffee menus (category needs a roast) also get the grinder steps; customers only ever see "กำลังทำ".
+const LINE_STEPS = { grinding: 'กำลังบดเมล็ดกาแฟ', ground: 'บดแล้วรอชง', making: 'กำลังทำ' };
+const COFFEE_ONLY_STEPS = new Set(['grinding', 'ground']);
+app.post('/api/queues/:id/lines/:i/step', need('queue'), h((req, res) => {
+  const q = findQueue(req.params.id);
+  if (q.status !== 'waiting') fail(400, 'คิวนี้ไม่ได้อยู่ระหว่างรอทำ');
+  const i = Number(req.params.i);
+  const line = Number.isInteger(i) ? q.lines[i] : null;
+  if (!line) fail(404, 'ไม่พบรายการนี้ในคิว');
+  const step = req.body?.step || null;
+  if (step && !LINE_STEPS[step]) fail(400, 'ขั้นตอนไม่ถูกต้อง');
+  const db = getDb();
+  const catId = db.menuItems.find((m) => m.id === line.menuItemId)?.categoryId || line.categoryId;
+  const coffee = !!db.categories.find((c) => c.id === catId)?.requireRoast;
+  if (step && COFFEE_ONLY_STEPS.has(step) && !coffee) fail(400, 'ขั้นตอนนี้ใช้กับเมนูกาแฟเท่านั้น');
+  q.lineSteps = { ...(q.lineSteps || {}) };
+  if (step) q.lineSteps[i] = { step, at: now(), by: req.user.name };
+  else delete q.lineSteps[i];
+  q.updatedAt = now();
+  markDirty('queues', q.createdAt);
+  save();
+  events.broadcast('queues', { id: q.id, status: q.status });
+  res.locals.audit = `คิว ${q.queueNo} ${q.name || ''} · ${line.qty}×${line.name} → ${step ? LINE_STEPS[step] : 'ล้างสถานะ'}`;
   return q;
 }));
 

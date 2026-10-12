@@ -58,6 +58,7 @@ const ROUTES = {
   'POST /api/queues': ['คิว', 'เพิ่มคิว'],
   'POST /api/queues/:id/status': ['คิว', 'เปลี่ยนสถานะคิว'],
   'POST /api/queues/:id/pay': ['คิว', 'ชำระเงินจากคิว'],
+  'POST /api/queues/:id/lines/:i/step': ['คิว', 'อัปเดตขั้นตอนการทำ'],
   'POST /api/ingredients/:id/adjust': ['สต๊อก', 'ปรับสต๊อก'],
   'POST /api/cash': ['ค่าใช้จ่าย', 'เงินสดในร้าน'],
   'POST /api/customers/:id/points': ['ลูกค้า', 'ปรับแต้มสะสม', 'warn'],
