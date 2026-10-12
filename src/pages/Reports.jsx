@@ -25,7 +25,7 @@ export default function Reports() {
     try {
       const [orders, settings] = await Promise.all([api('/orders', { query: range }), api('/settings')]);
       const name = `${kind === 'detail' ? 'sales-detail' : 'report-promo'}-${r.range.from}_${r.range.to}.csv`;
-      downloadCsv(name, kind === 'detail' ? detailRows(orders) : summaryRows(r, orders, settings.shopName));
+      downloadCsv(name, kind === 'detail' ? detailRows(orders, r) : summaryRows(r, orders, settings.shopName));
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -129,14 +129,14 @@ export default function Reports() {
                   <thead>
                     <tr>
                       <th>วันที่</th><th className="num">บิล</th><th className="num">ยอดขาย</th><th className="num">เงินสด</th>
-                      <th className="num">เงินโอน</th><th className="num hide-sm">ต้นทุน</th><th className="num hide-sm">ค่าใช้จ่าย</th><th className="num">กำไรสุทธิ</th>
+                      <th className="num">เงินโอน</th>{t.app > 0 && <th className="num">แอพ</th>}<th className="num hide-sm">ต้นทุน</th><th className="num hide-sm">ค่าใช้จ่าย</th><th className="num">กำไรสุทธิ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {r.daily.map((d) => (
                       <tr key={d.date} className={d.orders ? '' : 'row-dim'}>
                         <td>{thDate(d.date)}</td><td className="num">{d.orders}</td><td className="num">{baht(d.sales)}</td>
-                        <td className="num">{baht(d.cash)}</td><td className="num">{baht(d.transfer)}</td>
+                        <td className="num">{baht(d.cash)}</td><td className="num">{baht(d.transfer)}</td>{t.app > 0 && <td className="num">{baht(d.app)}</td>}
                         <td className="num hide-sm">{baht(d.cost)}</td><td className="num hide-sm">{baht(d.expenses)}</td>
                         <td className={`num ${d.netProfit < 0 ? 'text-bad' : ''}`}>{baht(d.netProfit)}</td>
                       </tr>
@@ -145,7 +145,7 @@ export default function Reports() {
                   <tfoot>
                     <tr>
                       <td>รวม</td><td className="num">{t.orders}</td><td className="num">{baht(t.sales)}</td><td className="num">{baht(t.cash)}</td>
-                      <td className="num">{baht(t.transfer)}</td><td className="num hide-sm">{baht(t.cost)}</td><td className="num hide-sm">{baht(t.expenses)}</td>
+                      <td className="num">{baht(t.transfer)}</td>{t.app > 0 && <td className="num">{baht(t.app)}</td>}<td className="num hide-sm">{baht(t.cost)}</td><td className="num hide-sm">{baht(t.expenses)}</td>
                       <td className={`num ${t.netProfit < 0 ? 'text-bad' : ''}`}>{baht(t.netProfit)}</td>
                     </tr>
                   </tfoot>
@@ -158,9 +158,12 @@ export default function Reports() {
             <Tabs value={tab} onChange={setTab} tabs={[
               { key: 'menu', label: 'เมนูขายดี' },
               { key: 'cat', label: 'ตามประเภท' },
+              { key: 'ch', label: 'ช่องทาง' },
               { key: 'top', label: 'ท็อปปิ้ง' },
+              { key: 'roast', label: 'ระดับคั่ว' },
               { key: 'disc', label: 'ส่วนลด' },
               { key: 'sweet', label: 'ความหวาน' },
+              { key: 'ing', label: 'วัตถุดิบที่ใช้' },
               { key: 'staff', label: 'พนักงาน' },
               { key: 'exp', label: 'ค่าใช้จ่าย' },
             ]} />
@@ -176,7 +179,15 @@ export default function Reports() {
               )}
               {tab === 'cat' && <RankTable rows={r.categories} cols={[['ประเภท', (x) => x.name], ['แก้ว', (x) => num(x.qty), 'num'], ['ยอดขาย', (x) => baht(x.sales), 'num']]} bar={(x) => x.sales} />}
               {tab === 'top' && <RankTable rows={r.toppings} cols={[['ท็อปปิ้ง', (x) => x.name], ['จำนวน', (x) => num(x.qty), 'num'], ['ยอดขาย', (x) => baht(x.sales), 'num']]} bar={(x) => x.qty} />}
-              {tab === 'disc' && <RankTable rows={r.discounts} cols={[['ส่วนลด', (x) => x.name], ['ครั้ง', (x) => num(x.count), 'num'], ['มูลค่า', (x) => baht(x.amount), 'num']]} bar={(x) => x.amount} />}
+              {tab === 'ch' && <RankTable rows={r.channels || []} cols={[['ช่องทาง', (x) => x.name], ['บิล', (x) => num(x.orders), 'num'], ['แก้ว', (x) => num(x.cups), 'num hide-sm'], ['ยอดขาย', (x) => baht(x.sales), 'num'], ['%', (x) => `${t.sales ? Math.round((x.sales / t.sales) * 1000) / 10 : 0}%`, 'num']]} bar={(x) => x.sales} />}
+              {tab === 'roast' && <RankTable rows={r.roasts || []} cols={[['ระดับคั่ว', (x) => x.name], ['แก้ว', (x) => num(x.qty), 'num']]} bar={(x) => x.qty} />}
+              {tab === 'ing' && (
+                <>
+                  <p className="muted small rank-note">คิดจากสิ่งที่ตัดสต๊อกจริงของแต่ละแก้ว (สูตร + ระดับความหวาน + ท็อปปิ้ง / นมโอ๊ต) — มูลค่าคิดจากต้นทุนต่อหน่วยปัจจุบัน</p>
+                  <RankTable rows={r.ingredients || []} cols={[['วัตถุดิบ', (x) => x.name], ['ใช้ไป', (x) => `${num(x.qty)} ${x.unit}`, 'num'], ['มูลค่า', (x) => baht(x.cost), 'num']]} bar={(x) => x.cost} />
+                </>
+              )}
+              {tab === 'disc' && <RankTable rows={r.discounts} cols={[['ส่วนลด', (x) => <>{x.name}{x.custom && <span className="badge badge-custom">กำหนดเอง</span>}</>], ['ครั้ง', (x) => num(x.count), 'num'], ['มูลค่า', (x) => baht(x.amount), 'num']]} bar={(x) => x.amount} />}
               {tab === 'sweet' && <RankTable rows={r.sweetness} cols={[['ระดับความหวาน', (x) => `${x.level}%`], ['แก้ว', (x) => num(x.qty), 'num']]} bar={(x) => x.qty} />}
               {tab === 'staff' && <RankTable rows={r.staff} cols={[['พนักงาน', (x) => x.name], ['บิล', (x) => num(x.orders), 'num'], ['ยอดขาย', (x) => baht(x.sales), 'num']]} bar={(x) => x.sales} />}
               {tab === 'exp' && <RankTable rows={r.expenseByCategory} cols={[['หมวด', (x) => x.name], ['จำนวนเงิน', (x) => baht(x.amount), 'num']]} bar={(x) => x.amount} />}

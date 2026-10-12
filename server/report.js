@@ -1,4 +1,4 @@
-import { round2 } from '../shared/pricing.js';
+import { round2, cupStock } from '../shared/pricing.js';
 import { isIngredientPurchase } from '../shared/expenses.js';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -8,6 +8,9 @@ export const localDate = (d) => {
 };
 
 export const APPS = { grab: 'Grab', lineman: 'LINE MAN' };
+// Where a bill came from: the counter, a staff queue, the customer QR menu, or a delivery app.
+export const CHANNELS = { counter: 'หน้าร้าน', queue: 'คิว (จ่ายตอนรับ)', qr: 'ลูกค้าสั่งผ่าน QR', grab: 'Grab', lineman: 'LINE MAN' };
+export const channelOf = (o) => (o.channel && APPS[o.channel] ? o.channel : o.queueId ? (o.source === 'customer' ? 'qr' : 'queue') : 'counter');
 
 /**
  * Cash in the shop right now: the last count ("set") + cash sales since − cash sales voided since
@@ -95,6 +98,7 @@ export function buildReport(db, range) {
     cups: paid.reduce((s, o) => s + o.items.reduce((a, l) => a + l.qty, 0), 0),
     gross: sum(paid, (o) => o.gross),
     discount: sum(paid, (o) => o.discountTotal),
+    customDiscount: round2(paid.reduce((s, o) => s + o.items.reduce((a, l) => a + l.discounts.filter((d) => d.custom).reduce((b, d) => b + d.amount, 0), 0), 0)),
     sales,
     cash: sum(paid.filter((o) => o.paymentMethod === 'cash'), (o) => o.total),
     transfer: sum(paid.filter((o) => o.paymentMethod === 'transfer'), (o) => o.total),
@@ -157,6 +161,11 @@ export function buildReport(db, range) {
   const tops = new Map();
   const discs = new Map();
   const sweet = new Map();
+  const roasts = new Map();
+  const channels = new Map(Object.keys(CHANNELS).map((k) => [k, { key: k, name: CHANNELS[k], orders: 0, cups: 0, sales: 0 }]));
+  const used = new Map(); // ingredientId -> qty cut by these sales
+  const topById = new Map((db.toppings || []).map((t) => [t.id, t]));
+  const isRoast = (t) => (topById.has(t.id) ? !!topById.get(t.id).isRoast : /^คั่ว/.test(t.name));
   const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, orders: 0, sales: 0 }));
   const staff = new Map();
 
@@ -164,6 +173,10 @@ export function buildReport(db, range) {
     const h = new Date(o.createdAt).getHours();
     hours[h].orders += 1;
     hours[h].sales += o.total;
+    const ch = channels.get(channelOf(o));
+    ch.orders += 1;
+    ch.cups += o.items.reduce((a, l) => a + l.qty, 0);
+    ch.sales += o.total;
     const s = staff.get(o.staffId) || { name: o.staffName, orders: 0, sales: 0 };
     s.orders += 1;
     s.sales += o.total;
@@ -184,17 +197,25 @@ export function buildReport(db, range) {
       cats.set(cur.category, c);
 
       for (const t of l.toppings) {
-        const x = tops.get(t.id) || { name: t.name, qty: 0, sales: 0 };
+        // roasts are a choice, not an add-on: counted on their own
+        const map = isRoast(t) ? roasts : tops;
+        const x = map.get(t.id) || { name: topById.get(t.id)?.name || t.name, qty: 0, sales: 0 };
         x.qty += l.qty;
         x.sales += t.price * l.qty;
-        tops.set(t.id, x);
+        map.set(t.id, x);
       }
       for (const d of l.discounts) {
-        const x = discs.get(d.id) || { name: d.name, count: 0, amount: 0 };
+        // every custom discount shares the id "custom": group those by the reason staff typed instead
+        const key = d.custom ? `custom:${l.customDiscount?.name || d.name}` : d.id;
+        const x = discs.get(key) || { name: d.custom ? l.customDiscount?.name || d.name : d.name, custom: !!d.custom, count: 0, amount: 0 };
         x.count += 1;
         x.amount += d.amount;
-        discs.set(d.id, x);
+        discs.set(key, x);
       }
+      // what this line actually cut from stock (recorded at sale; older bills use today's recipe)
+      const perCup = Array.isArray(l.stockPerCup) ? l.stockPerCup
+        : cupStock(db.menuItems.find((m) => m.id === l.menuItemId), l.toppings.map((t) => topById.get(t.id)).filter(Boolean), { replaced: l.replacedIngredientIds });
+      for (const r of perCup) used.set(r.ingredientId, (used.get(r.ingredientId) || 0) + r.qty * l.qty);
       if (l.sweetness != null) {
         sweet.set(l.sweetness, (sweet.get(l.sweetness) || 0) + l.qty);
       }
@@ -223,6 +244,12 @@ export function buildReport(db, range) {
     toppings: fin([...tops.values()]).sort((a, b) => b.qty - a.qty),
     discounts: fin([...discs.values()]).sort((a, b) => b.amount - a.amount),
     sweetness: [...sweet.entries()].map(([level, qty]) => ({ level, qty })).sort((a, b) => a.level - b.level),
+    roasts: fin([...roasts.values()]).sort((a, b) => b.qty - a.qty),
+    channels: fin([...channels.values()]).filter((c) => c.orders),
+    ingredients: [...used.entries()].map(([id, qty]) => {
+      const i = (db.ingredients || []).find((x) => x.id === id);
+      return { id, name: i?.name || 'วัตถุดิบที่ถูกลบ', unit: i?.unit || '', qty: round2(qty), cost: round2(qty * (Number(i?.costPerUnit) || 0)) };
+    }).sort((a, b) => b.cost - a.cost || b.qty - a.qty),
     hours: hours.map((h) => ({ ...h, sales: round2(h.sales) })),
     staff: fin([...staff.values()]).sort((a, b) => b.sales - a.sales),
     expenseByCategory: [...expenseByCategory.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount),

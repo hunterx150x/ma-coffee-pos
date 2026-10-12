@@ -16,13 +16,17 @@ export const CHARTS = [
   { key: 'trend', label: 'ยอดขายตามเวลา' },
   { key: 'profit', label: 'กำไรสุทธิรายวัน', multiDay: true },
   { key: 'category', label: 'สัดส่วนตามหมวด', share: true },
-  { key: 'payment', label: 'เงินสด / เงินโอน', share: true },
+  { key: 'channel', label: 'ช่องทางการขาย', share: true },
+  { key: 'payment', label: 'วิธีชำระเงิน', share: true },
   { key: 'menus', label: 'เมนูขายดี' },
   { key: 'discounts', label: 'ส่วนลดที่ใช้' },
+  { key: 'sweetness', label: 'ระดับความหวาน', share: true },
+  { key: 'roast', label: 'ระดับคั่วกาแฟ', share: true },
+  { key: 'ingredients', label: 'วัตถุดิบที่ใช้ไป' },
   { key: 'weekday', label: 'ยอดตามวันในสัปดาห์', multiDay: true },
   { key: 'hours', label: 'ช่วงเวลาขายดี', multiDay: true },
 ];
-const DEFAULT_PREFS = { visible: ['trend', 'category', 'payment', 'menus'], types: {} };
+const DEFAULT_PREFS = { visible: ['trend', 'channel', 'category', 'payment', 'menus'], types: {} };
 
 export function useChartPrefs() {
   const [prefs, setPrefs] = useState(() => {
@@ -48,6 +52,7 @@ export function useChartPrefs() {
   };
 }
 
+const cupsFmt = (v) => `${num(v)} แก้ว`;
 const short = (v) => (Math.abs(v) >= 1000 ? `${num(Math.round(v / 100) / 10)}k` : num(v));
 function niceCeil(v) {
   if (v <= 0) return 100;
@@ -279,13 +284,25 @@ export function ChartsGrid({ r, singleDay, catalog, prefs }) {
   if (show('payment')) {
     const type = prefs.typeOf('payment', 'bar');
     cards.push(
-      <ChartCard key="payment" title="เงินสด / เงินโอน" sub={`${t.cashCount} บิลเงินสด · ${t.transferCount} บิลเงินโอน`}
+      <ChartCard key="payment" title="วิธีชำระเงิน" sub={`เงินสด ${t.cashCount} · โอน ${t.transferCount}${t.appCount ? ` · แอพ ${t.appCount}` : ''} บิล`}
         tools={<TypeSwitch value={type} onChange={(v) => prefs.setType('payment', v)} />}>
         <ShareChart type={type} slices={[
           { key: 'cash', label: 'เงินสด', value: t.cash, color: SERIES[0] },
           { key: 'transfer', label: 'เงินโอน', value: t.transfer, color: SERIES[1] },
           ...(t.app ? [{ key: 'app', label: 'ขายในแอพ', value: t.app, color: SERIES[2] }] : []),
         ]} />
+      </ChartCard>,
+    );
+  }
+  if (show('channel')) {
+    const type = prefs.typeOf('channel', 'bar');
+    const CH_COLOR = { counter: SERIES[0], queue: SERIES[3], qr: SERIES[1], grab: SERIES[2], lineman: SERIES[5] };
+    cards.push(
+      <ChartCard key="channel" title="ช่องทางการขาย" sub="หน้าร้าน · คิว · ลูกค้าสั่งผ่าน QR · Grab · LINE MAN"
+        tools={<TypeSwitch value={type} onChange={(v) => prefs.setType('channel', v)} />}>
+        {r.channels?.length
+          ? <ShareChart type={type} slices={r.channels.map((c) => ({ key: c.key, label: c.name, value: c.sales, color: CH_COLOR[c.key] || OTHER }))} />
+          : <Empty icon="reports" title="ไม่มีข้อมูล" />}
       </ChartCard>,
     );
   }
@@ -310,6 +327,37 @@ export function ChartsGrid({ r, singleDay, catalog, prefs }) {
     cards.push(
       <ChartCard key="discounts" title="ส่วนลดที่ใช้" sub={t.discount ? `รวม ${baht(t.discount)} · ${Math.round((t.discount / (t.gross || 1)) * 1000) / 10}% ของยอดก่อนลด` : null}>
         {rows.length ? <HBarChart rows={rows} color={SERIES[1]} /> : <Empty icon="tag" title="ไม่มีการใช้ส่วนลด" />}
+      </ChartCard>,
+    );
+  }
+  if (show('sweetness')) {
+    const type = prefs.typeOf('sweetness', 'bar');
+    const rows = [...(r.sweetness || [])].sort((a, b) => b.level - a.level);
+    cards.push(
+      <ChartCard key="sweetness" title="ระดับความหวานที่ลูกค้าเลือก" sub="ใช้วางแผนสั่งนมข้น / น้ำเชื่อม"
+        tools={<TypeSwitch value={type} onChange={(v) => prefs.setType('sweetness', v)} />}>
+        {rows.length
+          ? <ShareChart type={type} format={cupsFmt} slices={rows.map((x, i) => ({ key: String(x.level), label: `หวาน ${x.level}%`, value: x.qty, color: SERIES[i] || OTHER }))} />
+          : <Empty icon="reports" title="ไม่มีข้อมูล" />}
+      </ChartCard>,
+    );
+  }
+  if (show('roast')) {
+    const type = prefs.typeOf('roast', 'bar');
+    cards.push(
+      <ChartCard key="roast" title="ระดับคั่วกาแฟที่ลูกค้าเลือก" sub="ใช้วางแผนสั่งเมล็ดกาแฟแต่ละชนิด"
+        tools={<TypeSwitch value={type} onChange={(v) => prefs.setType('roast', v)} />}>
+        {r.roasts?.length
+          ? <ShareChart type={type} format={cupsFmt} slices={r.roasts.map((x, i) => ({ key: x.name, label: x.name, value: x.qty, color: SERIES[i] || OTHER }))} />
+          : <Empty icon="reports" title="ยังไม่มีการเลือกระดับคั่ว" />}
+      </ChartCard>,
+    );
+  }
+  if (show('ingredients')) {
+    const rows = (r.ingredients || []).slice(0, 8).map((x) => ({ label: x.name, value: x.cost, sub: `ใช้ไป ${num(x.qty)} ${x.unit}` }));
+    cards.push(
+      <ChartCard key="ingredients" title="วัตถุดิบที่ใช้ไปตามยอดขาย (8 อันดับมูลค่า)" sub="คิดจากสูตร ความหวาน และท็อปปิ้งที่ขายจริง">
+        {rows.length ? <HBarChart rows={rows} color={SERIES[4]} /> : <Empty icon="stock" title="ไม่มีข้อมูล" />}
       </ChartCard>,
     );
   }

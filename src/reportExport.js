@@ -58,11 +58,12 @@ export function summaryRows(report, orders, shopName) {
     ['จำนวนแก้ว', t.cups],
     ['ยอดขายก่อนส่วนลด', t.gross],
     ['ส่วนลดรวม', t.discount],
+    ['  ในนั้น ส่วนลดกำหนดเอง (พนักงานกรอกเอง)', t.customDiscount || 0],
     ['% ส่วนลดต่อยอดขาย', pct(t.discount, t.gross)],
     ['ยอดขายสุทธิ', t.sales],
     ['เงินสด', t.cash],
     ['เงินโอน', t.transfer],
-    ['ขายในแอพ (Grab / LINE MAN)', t.app || 0],
+    ['ขายในแอพ (Grab / LINE MAN — ชำระผ่านแอพ)', t.app || 0],
     ['ต้นทุนวัตถุดิบ', t.cost],
     ['กำไรขั้นต้น', t.grossProfit],
     ['% กำไรขั้นต้น', t.grossMargin],
@@ -75,6 +76,7 @@ export function summaryRows(report, orders, shopName) {
     ['บิลลูกค้าใหม่', t.newCustomers],
     ['บิลลูกค้าเก่า', t.returningCustomers],
     ['บิลที่ยกเลิก', `${t.voidCount} บิล (${t.voidAmount} บาท)`],
+    ['เงินสดคงเหลือในร้าน (ตอนสร้างรายงาน)', report.cashDrawer ? report.cashDrawer.balance : 'ยังไม่ได้ตั้งยอด'],
   ].forEach((x) => rows.push(x));
 
   // ---- by channel / payment
@@ -93,11 +95,11 @@ export function summaryRows(report, orders, shopName) {
 
   // ---- daily
   section('สรุปรายวัน');
-  rows.push(['วันที่', 'วัน', 'บิล', 'แก้ว', 'ยอดขาย', 'เงินสด', 'เงินโอน', 'ต้นทุน', 'กำไรขั้นต้น', 'ค่าใช้จ่าย', 'กำไรสุทธิ']);
+  rows.push(['วันที่', 'วัน', 'บิล', 'แก้ว', 'ยอดขาย', 'เงินสด', 'เงินโอน', 'ขายในแอพ', 'ต้นทุน', 'กำไรขั้นต้น', 'ค่าใช้จ่าย', 'กำไรสุทธิ']);
   for (const d of report.daily) {
-    rows.push([d.date, WEEKDAYS[new Date(`${d.date}T00:00:00`).getDay()], d.orders, d.cups, d.sales, d.cash, d.transfer, d.cost, d.grossProfit, d.expenses, d.netProfit]);
+    rows.push([d.date, WEEKDAYS[new Date(`${d.date}T00:00:00`).getDay()], d.orders, d.cups, d.sales, d.cash, d.transfer, d.app || 0, d.cost, d.grossProfit, d.expenses, d.netProfit]);
   }
-  rows.push(['รวม', '', t.orders, t.cups, t.sales, t.cash, t.transfer, t.cost, t.grossProfit, t.expenses, t.netProfit]);
+  rows.push(['รวม', '', t.orders, t.cups, t.sales, t.cash, t.transfer, t.app || 0, t.cost, t.grossProfit, t.expenses, t.netProfit]);
 
   // ---- weekday
   section('ยอดตามวันในสัปดาห์', 'ใช้หาวันที่ขายเงียบ เพื่อจัดโปรวันธรรมดา');
@@ -184,7 +186,11 @@ export function summaryRows(report, orders, shopName) {
   const discs = new Map();
   for (const { o, l } of lines) {
     for (const d of l.discounts) {
-      const x = bump(discs, d.id || d.name, () => ({ name: d.name, type: d.type, bills: new Set(), times: 0, cups: 0, amount: 0, sales: 0, menus: new Map() }));
+      // custom discounts all have id "custom": one row per reason the staff typed
+      const reason = l.customDiscount?.name || d.name;
+      const x = bump(discs, d.custom ? `custom:${reason}` : d.id || d.name, () => ({
+        name: d.custom ? `${reason} (กำหนดเอง)` : d.name, type: d.type, bills: new Set(), times: 0, cups: 0, amount: 0, sales: 0, menus: new Map(),
+      }));
       x.bills.add(o.id);
       x.times += 1;
       const cups = d.id === LOYALTY ? (l.rewardQty || 0) : d.type === 'free' ? 1 : l.qty;
@@ -204,9 +210,11 @@ export function summaryRows(report, orders, shopName) {
 
   // ---- toppings × menu
   section('ท็อปปิ้ง', 'ท็อปปิ้งขายดี และขายคู่กับเมนูไหน (ใช้ทำโปรจับคู่ / อัปเซล)');
+  const roastNames = new Set((report.roasts || []).map((x) => x.name));
   const tops = new Map();
   for (const { l } of lines) {
     for (const tp of l.toppings) {
+      if (roastNames.has(tp.name)) continue; // reported in its own section
       const x = bump(tops, tp.name, () => ({ cups: 0, revenue: 0, cost: 0, menus: new Map() }));
       x.cups += l.qty; x.revenue += tp.price * l.qty; x.cost += (tp.cost || 0) * l.qty;
       x.menus.set(l.name, (x.menus.get(l.name) || 0) + l.qty);
@@ -228,11 +236,36 @@ export function summaryRows(report, orders, shopName) {
     for (const m of menuList) rows.push([m.name, ...levels.map((lv) => m.sweet.get(lv) || 0), m.cups]);
   }
 
+  // ---- coffee roasts
+  if (report.roasts?.length) {
+    section('ระดับคั่วกาแฟ', 'ใช้วางแผนสั่งเมล็ดกาแฟแต่ละชนิด');
+    const byRoast = new Map();
+    for (const { l } of lines) {
+      for (const tp of l.toppings) {
+        if (!roastNames.has(tp.name)) continue;
+        const x = bump(byRoast, tp.name, () => ({ cups: 0, menus: new Map() }));
+        x.cups += l.qty;
+        x.menus.set(l.name, (x.menus.get(l.name) || 0) + l.qty);
+      }
+    }
+    const roastCups = [...byRoast.values()].reduce((a, x) => a + x.cups, 0);
+    rows.push(['ระดับคั่ว', 'แก้ว', '% ของแก้วกาแฟ', 'เมนูที่ใช้บ่อย']);
+    for (const [name, x] of [...byRoast.entries()].sort((a, b) => b[1].cups - a[1].cups)) rows.push([name, x.cups, pct(x.cups, roastCups), topOf(x.menus, 3)]);
+  }
+
+  // ---- ingredients used by these sales
+  if (report.ingredients?.length) {
+    section('วัตถุดิบที่ใช้ไปตามยอดขาย', 'คิดจากที่ตัดสต๊อกจริงของแต่ละแก้ว (สูตร + ระดับความหวาน + ท็อปปิ้ง / นมโอ๊ต) — มูลค่าคิดจากต้นทุนต่อหน่วยปัจจุบัน');
+    rows.push(['วัตถุดิบ', 'ปริมาณที่ใช้', 'หน่วย', 'มูลค่า (บาท)', '% ของมูลค่าวัตถุดิบ']);
+    const all = report.ingredients.reduce((a, x) => a + x.cost, 0);
+    for (const x of report.ingredients) rows.push([x.name, x.qty, x.unit, x.cost, pct(x.cost, all)]);
+  }
+
   // ---- customers
   section('ลูกค้าที่ระบุชื่อ', 'ลูกค้าประจำ ยอดซื้อ และส่วนลดที่ใช้ (ใช้ทำโปรเฉพาะกลุ่ม / แจกคูปอง)');
   const customers = new Map();
   for (const o of paid) {
-    if (isGuest(o)) continue;
+    if (isGuest(o) || o.channel) continue; // delivery-app bills aren't named customers
     const c = bump(customers, o.customerId || o.customerName, () => ({
       name: o.customerName, member: Boolean(o.customerId), bills: 0, cups: 0, spend: 0, discount: 0, first: o.createdAt, last: o.createdAt,
       menus: new Map(), stamps: null, redeemed: 0,
@@ -286,10 +319,12 @@ export function summaryRows(report, orders, shopName) {
 }
 
 /** One row per sold line (cup group) — raw data for pivot tables. Includes voided bills, marked in the status column. */
-export function detailRows(orders) {
+export function detailRows(orders, report) {
+  const roastNames = new Set((report?.roasts || []).map((x) => x.name));
   const rows = [[
     'วันที่', 'เวลา', 'วัน', 'ชั่วโมง', 'เลขบิล', 'สถานะบิล', 'ช่องทาง', 'วิธีชำระ', 'ลูกค้า', 'ประเภทลูกค้า', 'สมาชิก', 'พนักงาน',
     'เมนู', 'ประเภทเมนู', 'จำนวนแก้ว', 'ราคาเมนู/แก้ว', 'ท็อปปิ้ง', 'ราคารวมท็อปปิ้ง/แก้ว', 'ราคาขาย/แก้ว', 'ความหวาน',
+    'ระดับคั่ว', 'ส่วนลดกำหนดเอง (เหตุผล)', 'เลขออเดอร์ในแอพ',
     'ยอดก่อนลด', 'ส่วนลดที่ใช้', 'มูลค่าส่วนลด', 'ยอดสุทธิ', 'ต้นทุน', 'กำไร', 'แลกแต้ม (แก้ว)', 'หมายเหตุ', 'คิวที่',
   ]];
   for (const o of [...orders].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
@@ -299,7 +334,9 @@ export function detailRows(orders) {
         dateStr(d), timeStr(d), WEEKDAYS[d.getDay()], d.getHours(), o.orderNo, o.status === 'void' ? 'ยกเลิก' : 'ชำระแล้ว', channel(o),
         payName(o), o.customerName, o.customerType === 'old' ? 'ลูกค้าเก่า' : 'ลูกค้าใหม่/ทั่วไป', o.customerId ? 'ใช่' : 'ไม่',
         o.staffName, l.name, l.categoryName, l.qty, l.price, l.toppings.map((x) => x.name).join(' + '), r2(l.toppings.reduce((s, x) => s + x.price, 0)),
-        l.unitPrice, l.sweetness != null ? `${l.sweetness}%` : '', l.gross, l.discounts.map((x) => `${x.name} (${x.amount})`).join(' + '), l.discountTotal,
+        l.unitPrice, l.sweetness != null ? `${l.sweetness}%` : '',
+        l.toppings.filter((x) => roastNames.has(x.name)).map((x) => x.name).join(' + '), l.customDiscount?.name || '', o.appRef || '',
+        l.gross, l.discounts.map((x) => `${x.name} (${x.amount})`).join(' + '), l.discountTotal,
         l.total, l.cost, r2(l.total - l.cost), l.rewardQty || 0, l.note || '', o.queueNo || '',
       ]);
     }

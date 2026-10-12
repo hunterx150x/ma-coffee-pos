@@ -20,6 +20,8 @@ function splitName(name, categoryName) {
   return { base: name, variant: PLAIN.key };
 }
 
+const CHANNEL_LABEL = { counter: 'หน้าร้าน', queue: 'คิว (จ่ายตอนรับ)', qr: 'ลูกค้าสั่งผ่าน QR', grab: 'Grab', lineman: 'LINE MAN' };
+const channelOf = (o) => (o.channel ? o.channel : o.queueId ? (o.source === 'customer' ? 'qr' : 'queue') : 'counter');
 const mode = (map) => [...map.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 
 function buildSheet(orders, catalog, expenses, { showAll }) {
@@ -90,9 +92,26 @@ function buildSheet(orders, catalog, expenses, { showAll }) {
       };
     });
 
-  // discounts by type (e.g. "Flash", staff, bring-your-own-cup, stamps)
+  // discounts by type (e.g. "Flash", staff, bring-your-own-cup, stamps); custom ones by the reason typed in
   const discounts = new Map();
-  for (const { l } of lines) for (const d of l.discounts) discounts.set(d.name, (discounts.get(d.name) || 0) + d.amount);
+  for (const { l } of lines) {
+    for (const d of l.discounts) {
+      const name = d.custom ? `${l.customDiscount?.name || d.name} (กำหนดเอง)` : d.name;
+      discounts.set(name, (discounts.get(name) || 0) + d.amount);
+    }
+  }
+  // sales channels and coffee roasts picked
+  const channels = new Map();
+  for (const o of paid) {
+    const k = channelOf(o);
+    const x = channels.get(k) || { name: CHANNEL_LABEL[k] || k, bills: 0, amount: 0 };
+    x.bills += 1;
+    x.amount += o.total;
+    channels.set(k, x);
+  }
+  const roastIds = new Set((catalog?.toppings || []).filter((t) => t.isRoast).map((t) => t.id));
+  const roasts = new Map();
+  for (const { l } of lines) for (const t of l.toppings) if (roastIds.has(t.id)) roasts.set(t.name, (roasts.get(t.name) || 0) + l.qty);
   // who got discounted / free cups (the handwritten notes on the paper form)
   const freebies = new Map();
   for (const { o, l } of lines) {
@@ -112,10 +131,14 @@ function buildSheet(orders, catalog, expenses, { showAll }) {
   const transfer = sum(paid.filter((o) => o.paymentMethod === 'transfer'), (o) => o.total);
   const app = sum(paid.filter((o) => o.paymentMethod === 'app'), (o) => o.total);
   const expenseTotal = sum(expenses, (e) => e.amount);
+  // Only expenses marked "paid from the shop's cash" come out of the cash; the rest were paid some other way.
+  const cashExpenses = sum(expenses.filter((e) => e.paidFromCash), (e) => e.amount);
   return {
     variants, topCols, hasOtherTops, sections: sectionList,
     totals: { bills: paid.length, cups: sum(lines, (x) => x.l.qty), discount: sum(paid, (o) => o.discountTotal), amount: sum(paid, (o) => o.total) },
-    money: { cash, transfer, app, expenseTotal, cashLeft: cash - expenseTotal, total: cash + transfer + app, left: cash + transfer + app - expenseTotal },
+    money: { cash, transfer, app, expenseTotal, cashExpenses, otherExpenses: expenseTotal - cashExpenses, cashLeft: cash - cashExpenses, total: cash + transfer + app, left: cash + transfer + app - expenseTotal },
+    channels: [...channels.values()].sort((a, b) => b.amount - a.amount),
+    roasts: [...roasts.entries()].sort((a, b) => b[1] - a[1]),
     discounts: [...discounts.entries()].sort((a, b) => b[1] - a[1]),
     freebies: [...freebies.values()].sort((a, b) => b.amount - a.amount),
     expenses: [...expByCat.entries()].sort((a, b) => b[1] - a[1]),
@@ -136,13 +159,14 @@ export default function SalesSheet({ range }) {
   const [showAll, setShowAll] = useState(false);
   const [perDay, setPerDay] = useState(false);
   const data = useAsync(async () => {
-    const [orders, catalog, settings, expenses] = await Promise.all([
+    const [orders, catalog, settings, expenses, cash] = await Promise.all([
       api('/orders', { query: range }),
       api('/catalog'),
       api('/settings'),
       api('/expenses-range', { query: range }).catch(() => null), // staff without the expenses menu
+      api('/cash').catch(() => null),
     ]);
-    return { orders, catalog, settings, expenses };
+    return { orders, catalog, settings, expenses, drawer: cash?.drawer || null };
   }, [range.from, range.to]);
 
   const pages = useMemo(() => {
@@ -155,6 +179,8 @@ export default function SalesSheet({ range }) {
       sheet: buildSheet(orders.filter((o) => localDay(o.createdAt) === day), catalog, exp.filter((e) => e.date === day), { showAll }),
     })).filter((p) => showAll || p.sheet.totals.bills);
   }, [data.data, perDay, showAll, range.from, range.to]);
+
+  const drawer = data.data?.drawer; // cash in the shop right now (not limited to the range)
 
   const print = () => {
     const style = document.createElement('style');
@@ -182,10 +208,16 @@ export default function SalesSheet({ range }) {
         rows.push(['', `รวม ${sec.name}`, ...s.variants.flatMap(() => ['', '']), ...s.topCols.map(() => ''), ...(s.hasOtherTops ? [''] : []), sec.discount, sec.amount]);
       }
       rows.push(['', 'ยอดรวม', `${s.totals.cups} แก้ว`, `${s.totals.bills} บิล`]);
-      rows.push(['เงินสด', s.money.cash], ['เงินโอน', s.money.transfer], ...(s.money.app ? [['ขายในแอพ', s.money.app]] : []), ['ส่วนลดรวม', s.totals.discount]);
+      rows.push(['ช่องทางการขาย', 'บิล', 'ยอด']);
+      s.channels.forEach((c) => rows.push([`  ${c.name}`, c.bills, c.amount]));
+      rows.push(['เงินสด', s.money.cash], ['เงินโอน', s.money.transfer], ...(s.money.app ? [['ขายในแอพ (ชำระผ่านแอพ)', s.money.app]] : []), ['ส่วนลดรวม', s.totals.discount]);
       s.discounts.forEach(([n, a]) => rows.push([`  ${n}`, a]));
       s.expenses.forEach(([n, a]) => rows.push([`ค่าใช้จ่าย: ${n}`, a]));
-      rows.push(['คงเหลือ (เงินสด)', s.money.cashLeft], ['คงเหลือ (เงินโอน)', s.money.transfer], ['รวมคงเหลือ', s.money.left], []);
+      rows.push(['ค่าใช้จ่ายที่จ่ายจากเงินสดในร้าน', s.money.cashExpenses], ['ค่าใช้จ่ายที่จ่ายช่องทางอื่น', s.money.otherExpenses]);
+      rows.push(['เงินสดจากการขาย − ค่าใช้จ่ายเงินสด', s.money.cashLeft], ['คงเหลือ (เงินโอน)', s.money.transfer], ['รวมคงเหลือ', s.money.left]);
+      if (s.roasts.length) rows.push(['ระดับคั่ว', s.roasts.map(([n, q]) => `${n} ${q}`).join(' · ')]);
+      if (drawer) rows.push(['เงินสดในร้านตอนนี้', drawer.balance]);
+      rows.push([]);
     }
     downloadCsv(`sales-sheet-${range.from}_${range.to}.csv`, rows);
   };
@@ -207,14 +239,14 @@ export default function SalesSheet({ range }) {
       </div>
       {!pages.length ? <Empty icon="reports" title="ไม่มียอดขายในช่วงนี้" /> : (
         <div id="sales-sheet">
-          {pages.map((p) => <Sheet key={p.from + p.to} page={p} shop={shop} />)}
+          {pages.map((p) => <Sheet key={p.from + p.to} page={p} shop={shop} drawer={drawer} />)}
         </div>
       )}
     </div>
   );
 }
 
-function Sheet({ page, shop }) {
+function Sheet({ page, shop, drawer }) {
   const s = page.sheet;
   const nVar = s.variants.length;
   const nTop = s.topCols.length + (s.hasOtherTops ? 1 : 0);
@@ -284,18 +316,33 @@ function Sheet({ page, shop }) {
 
         <aside className="sheet-side">
           <div className="sheet-box">
+            {s.channels.length > 1 && (
+              <>
+                <div className="sheet-box-title">ช่องทางการขาย</div>
+                {s.channels.map((c) => <div key={c.name} className="sheet-row sheet-sub"><span>{c.name} ({c.bills} บิล)</span><span>{baht(c.amount)}</span></div>)}
+              </>
+            )}
             <div className="sheet-row"><span>เงินสด</span><b>{baht(s.money.cash)}</b></div>
             <div className="sheet-row"><span>เงินโอน</span><b>{baht(s.money.transfer)}</b></div>
-            {s.money.app > 0 && <div className="sheet-row"><span>ขายในแอพ (Grab / LINE MAN)</span><b>{baht(s.money.app)}</b></div>}
+            {s.money.app > 0 && <div className="sheet-row"><span>ขายในแอพ (ชำระผ่านแอพ)</span><b>{baht(s.money.app)}</b></div>}
             <div className="sheet-row"><span>ส่วนลดรวม</span><span>{s.totals.discount ? `−${baht(s.totals.discount)}` : '–'}</span></div>
             {s.discounts.map(([n, a]) => <div key={n} className="sheet-row sheet-sub"><span>{n}</span><span>−{baht(a)}</span></div>)}
             {s.expenses.length > 0 && <div className="sheet-row"><span>ค่าใช้จ่าย</span><span>−{baht(s.money.expenseTotal)}</span></div>}
             {s.expenses.map(([n, a]) => <div key={n} className="sheet-row sheet-sub"><span>{n}</span><span>−{baht(a)}</span></div>)}
+            {s.expenses.length > 0 && (
+              <div className="muted small">จ่ายจากเงินสดในร้าน {baht(s.money.cashExpenses)}{s.money.otherExpenses ? ` · ช่องทางอื่น ${baht(s.money.otherExpenses)}` : ''}</div>
+            )}
             <div className="sheet-row sheet-line"><span>คงเหลือ (เงินสด)</span><b>{baht(s.money.cashLeft)}</b></div>
             <div className="sheet-row"><span>คงเหลือ (เงินโอน)</span><b>{baht(s.money.transfer)}</b></div>
             <div className="sheet-row sheet-grand"><span>รวมคงเหลือ</span><b>{baht(s.money.left)}</b></div>
-            {s.expenses.length > 0 && <div className="muted small">คิดว่าค่าใช้จ่ายจ่ายด้วยเงินสด</div>}
+            {drawer && <div className="sheet-row sheet-drawer"><span>เงินสดในร้านตอนนี้</span><b>{baht(drawer.balance)}</b></div>}
           </div>
+          {s.roasts.length > 0 && (
+            <div className="sheet-box">
+              <div className="sheet-box-title">ระดับคั่วกาแฟ</div>
+              {s.roasts.map(([n, q]) => <div key={n} className="sheet-row sheet-sub"><span>{n}</span><span>{q} แก้ว</span></div>)}
+            </div>
+          )}
           {s.freebies.length > 0 && (
             <div className="sheet-box">
               <div className="sheet-box-title">ได้ส่วนลด / แก้วฟรี</div>
