@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { recipeCost, round2 } from '../../shared/pricing.js';
+import { recipeCost, round2, sweetRatio, DEFAULT_SWEET_AMOUNTS, DEFAULT_CUP_VOLUME } from '../../shared/pricing.js';
 import { ImagePicker, MenuThumb } from '../components/MenuImage.jsx';
 import { baht, discountLabel, num } from '../utils.js';
 import { Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, Toggle, useAsync, useUi } from '../components/ui.jsx';
@@ -9,6 +9,7 @@ export default function Products() {
   const [tab, setTab] = useState('menu');
   const cats = useAsync(() => api('/categories'), []);
   const ings = useAsync(() => api('/ingredients'), []);
+  const settings = useAsync(() => api('/settings'), []);
   return (
     <div>
       <PageHead title="เมนู & ราคา" sub="เพิ่ม ลบ แก้ไขเมนู ท็อปปิ้ง ส่วนลด และกำหนดต้นทุนเพื่อคำนวณกำไร" />
@@ -18,7 +19,7 @@ export default function Products() {
         { key: 'top', label: 'ท็อปปิ้ง' },
         { key: 'disc', label: 'ส่วนลด' },
       ]} />
-      {tab === 'menu' && <MenuItems cats={cats.data || []} ings={ings.data || []} />}
+      {tab === 'menu' && <MenuItems cats={cats.data || []} ings={ings.data || []} settings={settings.data} />}
       {tab === 'cat' && <Categories onChange={cats.reload} />}
       {tab === 'top' && <Toppings ings={ings.data || []} />}
       {tab === 'disc' && <Discounts />}
@@ -95,7 +96,7 @@ function EditorModal({ crud, title, children, onSubmit }) {
 }
 
 // ---------- menu items ----------
-function MenuItems({ cats, ings }) {
+function MenuItems({ cats, ings, settings }) {
   const crud = useCrud('menu-items', 'เมนู');
   const [filter, setFilter] = useState('');
   const [f, setF] = useState(null);
@@ -165,7 +166,7 @@ function MenuItems({ cats, ings }) {
                 <NumberInput value={f.sort} onChange={(v) => setF({ ...f, sort: v })} step="1" />
               </Field>
             </div>
-            <CostEditor f={f} setF={setF} ings={ings} />
+            <CostEditor f={f} setF={setF} ings={ings} settings={settings} roles />
             <StepsEditor f={f} setF={setF} ings={ings} />
             <div className="toggle-list">
               <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
@@ -187,7 +188,7 @@ function Margin({ price, cost }) {
 }
 
 /** Cost: either typed manually, or computed from a recipe of stock ingredients (also used for stock deduction). */
-function CostEditor({ f, setF, ings }) {
+function CostEditor({ f, setF, ings, settings, roles = false }) {
   const recipe = f.recipe || [];
   const rc = round2(recipeCost(recipe, ings));
   const setRow = (i, patch) => setF({ ...f, recipe: recipe.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
@@ -209,12 +210,24 @@ function CostEditor({ f, setF, ings }) {
         {recipe.map((r, i) => {
           const ing = ings.find((x) => x.id === r.ingredientId);
           return (
-            <div key={i} className="recipe-row">
+            <div key={i} className={`recipe-row ${roles ? 'recipe-row-role' : ''}`}>
               <select className="input" value={r.ingredientId} onChange={(e) => setRow(i, { ingredientId: e.target.value })}>
                 {ings.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
               <NumberInput value={r.qty} onChange={(v) => setRow(i, { qty: v })} aria-label="ปริมาณ" />
               <span className="muted small recipe-unit">{ing?.unit}</span>
+              {roles && (
+                <select className={`input recipe-role ${r.role ? `role-${r.role}` : ''}`} value={r.role || ''} aria-label="บทบาทในสูตร"
+                  onChange={(e) => setF({ ...f, recipe: recipe.map((x, j) => {
+                    if (j === i) return { ...x, role: e.target.value || undefined };
+                    // only one line tops the cup up
+                    return e.target.value === 'fill' && x.role === 'fill' ? { ...x, role: undefined } : x;
+                  }) })}>
+                  <option value="">ปกติ</option>
+                  <option value="sweet">🍯 ความหวาน</option>
+                  <option value="fill">🥛 เติมให้ครบ</option>
+                </select>
+              )}
               <span className="small recipe-cost">{baht(round2((ing?.costPerUnit || 0) * (Number(r.qty) || 0)))}</span>
               <button className="icon-btn icon-btn-danger" onClick={() => setF({ ...f, recipe: recipe.filter((_, j) => j !== i) })} aria-label="ลบวัตถุดิบ">
                 <Icon name="x" size={18} />
@@ -229,12 +242,71 @@ function CostEditor({ f, setF, ings }) {
         ) : <div className="muted small">ยังไม่มีวัตถุดิบ เพิ่มได้ที่เมนู “สต๊อก”</div>}
         {recipe.length > 0 && <div className="small">ต้นทุนตามสูตร: <b>{baht(rc)}</b></div>}
       </div>
+      {roles && recipe.length > 0 && <SweetPreview f={f} setF={setF} ings={ings} settings={settings} />}
       {f.price !== undefined && (
         <div className="cost-summary">
           <span>ต้นทุน <b>{baht(cost)}</b></span>
           <span>กำไรต่อหน่วย <b><Margin price={f.price} cost={cost} /></b></span>
         </div>
       )}
+    </div>
+  );
+}
+
+const isLiquid = (ing) => /มล|ml|cc|ซีซี/i.test(ing?.unit || '');
+
+/**
+ * Menu recipe vs. sweetness: liquid total against the cup volume (with a "top up" button) and what each
+ * sweetness level actually cuts — sweetener scaled by the shop's table, the 🥛 line topped up by the difference.
+ */
+function SweetPreview({ f, setF, ings, settings }) {
+  const recipe = (f.recipe || []).map((r) => ({ ...r, qty: Number(r.qty) || 0 }));
+  const levels = settings?.sweetnessLevels?.length ? [...settings.sweetnessLevels].sort((a, b) => b - a) : [100, 50, 25];
+  const amounts = { ...DEFAULT_SWEET_AMOUNTS, ...(settings?.sweetAmounts || {}) };
+  const shopVolume = Number(settings?.cupVolume) || DEFAULT_CUP_VOLUME;
+  const volume = Number(f.cupVolume) || shopVolume;
+  const ing = (id) => ings.find((i) => i.id === id);
+  const liquid = recipe.filter((r) => isLiquid(ing(r.ingredientId))).reduce((a, r) => a + r.qty, 0);
+  const sweet = recipe.filter((r) => r.role === 'sweet');
+  const fill = recipe.find((r) => r.role === 'fill');
+  const diff = round2(volume - liquid);
+  const topUp = () => setF({ ...f, recipe: (f.recipe || []).map((r) => (r.role === 'fill' ? { ...r, qty: round2((Number(r.qty) || 0) + diff) } : r)) });
+  const shown = recipe.filter((r) => r.role || isLiquid(ing(r.ingredientId)));
+  return (
+    <div className="sweet-preview">
+      <div className="sweet-preview-head">
+        <span className={`small ${diff ? 'text-bad' : 'text-good'}`}>
+          ของเหลวต่อแก้ว <b>{num(liquid)} มล.</b> / ควรเป็น {num(volume)} มล.{diff ? ` (${diff > 0 ? 'ขาด' : 'เกิน'} ${num(Math.abs(diff))})` : ' ✓'}
+        </span>
+        {diff !== 0 && fill && <button type="button" className="btn btn-sm btn-outline" onClick={topUp}>ปรับ {ing(fill.ingredientId)?.name.split(' ')[0]} ให้ครบ {num(volume)} มล.</button>}
+        <label className="sweet-vol small">
+          <span className="muted">ปริมาณต่อแก้วของเมนูนี้</span>
+          <NumberInput value={f.cupVolume || ''} placeholder={String(shopVolume)} onChange={(v) => setF({ ...f, cupVolume: v })} aria-label="ปริมาณต่อแก้ว (มล.)" />
+          <span className="muted">มล.</span>
+        </label>
+      </div>
+      {sweet.length ? (
+        <>
+          <div className="muted small">ตัดสต๊อกตามระดับความหวาน{fill ? ` — ${ing(fill.ingredientId)?.name.split(' ')[0]} เติมส่วนที่ลดลง ให้รวมเท่าเดิม` : ' — ยังไม่ได้เลือก 🥛 เติมให้ครบ ปริมาณรวมจะลดลงตามความหวาน'}</div>
+          <div className="table-wrap">
+            <table className="table sweet-levels">
+              <thead><tr><th>หวาน</th>{shown.map((r, i) => <th key={i} className="num">{ing(r.ingredientId)?.name.split(' ')[0]}{r.role === 'sweet' ? ' 🍯' : r.role === 'fill' ? ' 🥛' : ''}</th>)}<th className="num">รวม</th></tr></thead>
+              <tbody>
+                {levels.map((lv) => {
+                  // same rule as the stock cut (shared cupStock): sweetener scaled, the 🥛 line takes the difference
+                  const ratio = sweetRatio(lv, amounts);
+                  const given = sweet.reduce((a, r) => a + r.qty - round2(r.qty * ratio), 0);
+                  const qtyOf = (r) => (r.role === 'sweet' ? round2(r.qty * ratio) : r === fill ? round2(Math.max(0, r.qty + given)) : r.qty);
+                  const total = shown.filter((r) => isLiquid(ing(r.ingredientId))).reduce((a, r) => a + qtyOf(r), 0);
+                  return (
+                    <tr key={lv}><td>{lv}%</td>{shown.map((r, i) => <td key={i} className="num">{num(qtyOf(r))}</td>)}<td className="num"><b>{num(total)}</b></td></tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : <div className="muted small">เลือก 🍯 ความหวาน ที่วัตถุดิบนมข้น / น้ำเชื่อม เพื่อให้ตัดสต๊อกตามระดับความหวาน และ 🥛 เติมให้ครบ ที่นมที่ใช้เติมแก้ว</div>}
     </div>
   );
 }

@@ -139,7 +139,7 @@ const SCALARS = { name: 'ชื่อ', price: 'ราคา', cost: 'ต้น�
   icon: 'ไอคอน', type: 'รูปแบบ', value: 'มูลค่า', maxValue: 'สูงสุด', unit: 'หน่วย', costPerUnit: 'ต้นทุน/หน่วย', minQty: 'ขั้นต่ำ',
   amount: 'จำนวนเงิน', category: 'หมวด', description: 'รายละเอียด', date: 'วันที่', phone: 'เบอร์', lineId: 'LINE', note: 'หมายเหตุ',
   source: 'ผู้ลงทุน', categoryId: 'ประเภท', role: 'บทบาท', username: 'ชื่อผู้ใช้',
-  requireRoast: 'ต้องเลือกระดับคั่ว', isRoast: 'เป็นตัวเลือกระดับคั่ว', paidFromCash: 'จ่ายจากเงินสดในร้าน' };
+  cupVolume: 'ปริมาณต่อแก้ว', requireRoast: 'ต้องเลือกระดับคั่ว', isRoast: 'เป็นตัวเลือกระดับคั่ว', paidFromCash: 'จ่ายจากเงินสดในร้าน' };
 // Key-order-insensitive JSON, so a re-saved recipe {qty, ingredientId} vs {ingredientId, qty} isn't a "change".
 const stable = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 const same = (a, b) => stable(a) === stable(b);
@@ -167,6 +167,11 @@ function recipeDiff(a = [], b = []) {
     else if (A.get(id) !== q) out.push(`${i?.name || '?'} ${A.get(id)}→${q}${u}`);
   }
   for (const id of A.keys()) if (!B.has(id)) out.push(`-${ingName(id)?.name || '?'}`);
+  const ROLE = { sweet: 'ความหวาน', fill: 'เติมให้ครบ' };
+  for (const r of b) {
+    const o = a.find((x) => x.ingredientId === r.ingredientId);
+    if (o && (o.role || '') !== (r.role || '')) out.push(`${ingName(r.ingredientId)?.name || '?'} ${r.role ? `ตั้งเป็น${ROLE[r.role]}` : `เลิกเป็น${ROLE[o.role]}`}`);
+  }
   return out.join(', ');
 }
 

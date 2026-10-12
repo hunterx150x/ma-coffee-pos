@@ -109,6 +109,25 @@ function migrate(d) {
     }
     done.add('replace-milk-v1');
   }
+  if (!done.has('sweet-roles-v1')) {
+    // Sweetness cuts stock: mark the obvious sweetener (condensed milk / plain syrup) and the milk that tops the cup up.
+    // Flavoured syrups (ไซรัป…) are left alone — the owner marks those menus by hand.
+    d.settings.sweetAmounts = d.settings.sweetAmounts || { 0: 0, 25: 7, 50: 15, 75: 22, 100: 30 };
+    d.settings.cupVolume = d.settings.cupVolume || 180;
+    const name = (id) => d.ingredients.find((i) => i.id === id)?.name || '';
+    for (const m of d.menuItems) {
+      const r = m.recipe || [];
+      if (r.some((x) => x.role)) continue;
+      const sweet = r.filter((x) => /^(นมข้นหวาน|น้ำเชื่อม)/.test(name(x.ingredientId)));
+      if (sweet.length !== 1) continue;
+      sweet[0].role = 'sweet';
+      const fresh = r.filter((x) => /^นมสด/.test(name(x.ingredientId)));
+      const evap = r.filter((x) => /^นมข้นจืด/.test(name(x.ingredientId)));
+      const fill = fresh.length === 1 ? fresh[0] : !fresh.length && evap.length === 1 ? evap[0] : null;
+      if (fill) fill.role = 'fill';
+    }
+    done.add('sweet-roles-v1');
+  }
   if (!done.has('audit-v1')) {
     // Extra password for the owner-only activity log (kept hashed, outside backups).
     d.meta.auditPasswordHash = d.meta.auditPasswordHash || hashPassword(process.env.AUDIT_PASSWORD || '252525');
@@ -234,6 +253,8 @@ function defaultSettings() {
     address: '',
     phone: '',
     promptPayId: '',
+    sweetAmounts: { 0: 0, 25: 7, 50: 15, 75: 22, 100: 30 }, // ml of sweetener per level for a standard cup
+    cupVolume: 180, // ml of liquid per cup (default; a menu can override)
     // Transfer: the shop's own Thai QR (e.g. K SHOP) re-issued with the bill amount, or PromptPay; plus account details.
     payment: { mode: 'promptpay', shopQr: '', bankName: '', accountNo: '', accountName: '' },
     receiptFooter: 'ขอบคุณที่อุดหนุนค่ะ ☕',

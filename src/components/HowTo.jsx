@@ -1,4 +1,5 @@
 import { num, sweetLabel } from '../utils.js';
+import { round2, sweetRatio } from '../../shared/pricing.js';
 import { Empty, Icon, Modal } from './ui.jsx';
 
 /** How to make one cart / queue line: ingredients (recipe + toppings) and the numbered steps. */
@@ -9,6 +10,15 @@ export default function HowToModal({ line, catalog, onClose }) {
   // Menu ingredients a chosen topping replaces (e.g. fresh milk when oat milk is picked).
   const replaced = new Set(line?.replacedIngredientIds || toppings.flatMap((t) => t.replaceIngredientIds || []));
   const replacedBy = (ingredientId) => replaced.has(ingredientId) && toppings.find((t) => (t.replaceIngredientIds || []).includes(ingredientId));
+  // Amounts for this cup's sweetness (same rule as the stock cut): sweetener scaled, the 🥛 line tops the cup up.
+  const ratio = sweetRatio(line?.sweetness, catalog?.settings?.sweetAmounts);
+  const ings = howTo.ingredients || [];
+  const given = ings.filter((r) => r.role === 'sweet').reduce((a, r) => a + r.qty - round2(r.qty * ratio), 0);
+  const fill = ings.find((r) => r.role === 'fill');
+  const qtyOf = (r) => (r.role === 'sweet' ? round2(r.qty * ratio) : r === fill ? round2(Math.max(0, r.qty + given)) : r.qty);
+  // If the topped-up milk was replaced (oat milk), the replacing topping's first ingredient takes the difference.
+  const fillTo = fill && replaced.has(fill.ingredientId) ? toppings.find((t) => (t.replaceIngredientIds || []).includes(fill.ingredientId) && t.howTo?.ingredients.length) : null;
+  const changed = (r) => (r.role === 'sweet' || r === fill) && given !== 0;
 
   return (
     <Modal open={!!line} title={`วิธีทำ · ${line?.name || ''}`} onClose={onClose}
@@ -51,12 +61,21 @@ export default function HowToModal({ line, catalog, onClose }) {
                     return by ? (
                       <tr key={i} className="howto-replaced"><td><s>{r.name}</s> <span className="small">→ ใช้ {by.name} แทน</span></td><td className="num"><s>{num(r.qty)} {r.unit}</s></td></tr>
                     ) : (
-                      <tr key={i}><td>{r.name}</td><td className="num">{num(r.qty)} {r.unit}</td></tr>
+                      <tr key={i} className={changed(r) ? 'howto-adjusted' : ''}>
+                        <td>{r.name}{changed(r) && <span className="small"> {r.role === 'sweet' ? `(${sweetLabel(line.sweetness)})` : '(เติมให้ครบ)'}</span>}</td>
+                        <td className="num">{num(qtyOf(r))} {r.unit}</td>
+                      </tr>
                     );
                   })}
-                  {toppings.flatMap((t) => (t.howTo?.ingredients || []).map((r, i) => (
-                    <tr key={`${t.id}-${i}`}><td>{r.name} <span className="muted small">({t.name})</span></td><td className="num">{num(r.qty)} {r.unit}</td></tr>
-                  )))}
+                  {toppings.flatMap((t) => (t.howTo?.ingredients || []).map((r, i) => {
+                    const extra = t === fillTo && i === 0 ? given : 0;
+                    return (
+                      <tr key={`${t.id}-${i}`} className={extra ? 'howto-adjusted' : ''}>
+                        <td>{r.name} <span className="muted small">({t.name}{extra ? ' · เติมให้ครบ' : ''})</span></td>
+                        <td className="num">{num(round2(Math.max(0, r.qty + extra)))} {r.unit}</td>
+                      </tr>
+                    );
+                  }))}
                 </tbody>
               </table>
             </section>

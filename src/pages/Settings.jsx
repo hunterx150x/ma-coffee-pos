@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api, getToken } from '../api.js';
 import { useAuth } from '../App.jsx';
 import { today } from '../utils.js';
-import { Field, Icon, Loading, PageHead, Toggle, useAsync, useUi } from '../components/ui.jsx';
+import { Field, Icon, Loading, NumberInput, PageHead, Toggle, useAsync, useUi } from '../components/ui.jsx';
+import { DEFAULT_SWEET_AMOUNTS, DEFAULT_CUP_VOLUME } from '../../shared/pricing.js';
 import { thDateTime } from '../utils.js';
 import QRCode from 'qrcode';
 import { CONTACTS, ContactIcon } from '../components/Contacts.jsx';
@@ -83,6 +84,11 @@ export default function Settings() {
           <h3 className="card-title">การขาย</h3>
           <Field label="ระดับความหวาน (%)" hint="คั่นด้วยเครื่องหมายจุลภาค เช่น 0, 25, 50, 75, 100">
             <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
+          </Field>
+          <SweetAmounts levels={levels} amounts={{ ...DEFAULT_SWEET_AMOUNTS, ...(f.sweetAmounts || {}) }}
+            setAmounts={(sweetAmounts) => setF({ ...f, sweetAmounts })} />
+          <Field label="ปริมาณน้ำต่อแก้ว (มล.)" hint="ของเหลวรวมต่อแก้วมาตรฐาน เช่น 180 มล. (6 ออนซ์) — ใช้ตรวจสูตรและปุ่ม “เติมให้ครบ” ในหน้าเมนู (แต่ละเมนูตั้งเองได้)">
+            <NumberInput value={f.cupVolume ?? DEFAULT_CUP_VOLUME} onChange={(v) => setF({ ...f, cupVolume: v })} />
           </Field>
         </div>
         <PaymentCard pay={{ mode: 'promptpay', shopQr: '', bankName: '', accountNo: '', accountName: '', ...(f.payment || {}) }}
@@ -477,5 +483,24 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
       )}
 
     </div>
+  );
+}
+
+/** ml of sweetener per sweetness level for a standard cup; each menu's sweetener scales by this table. */
+function SweetAmounts({ levels, amounts, setAmounts }) {
+  const lv = [...new Set([...levels.split(/[,\s]+/).map(Number).filter((n) => Number.isFinite(n) && n >= 0), 100])].sort((a, b) => a - b);
+  return (
+    <Field label="ปริมาณความหวานต่อแก้ว (มล.)"
+      hint="ปริมาณนมข้น / น้ำเชื่อมที่ใช้ในแต่ละระดับ (แก้วมาตรฐาน) — เมนูที่ใช้ความหวานไม่เท่านี้จะปรับตามสัดส่วนเดียวกัน เช่น เมนูที่ใช้ 15 มล. ที่หวาน 100 จะใช้ 7.5 มล. ที่หวาน 50">
+      <div className="sweet-table">
+        {lv.map((l) => (
+          <label key={l} className="sweet-cell">
+            <span className="muted small">หวาน {l}%</span>
+            <NumberInput value={amounts[l] ?? ''} placeholder={String(Math.round(((Number(amounts[100]) || 30) * l) / 100))}
+              onChange={(v) => setAmounts({ ...amounts, [l]: v })} aria-label={`ปริมาณที่หวาน ${l}%`} />
+          </label>
+        ))}
+      </div>
+    </Field>
   );
 }

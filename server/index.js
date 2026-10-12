@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { load, getDb, save, flush, markDirty, uid, now, replaceDb, COLLECTIONS } from './db.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
 import { buildReport, parseRange, inRange, localDate, cashDrawer, APPS } from './report.js';
-import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable, cleanCustomDiscount, roastChoices, effectiveRecipe } from '../shared/pricing.js';
+import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable, cleanCustomDiscount, roastChoices, cupStock } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import { checkThaiQr, thaiQrWithAmount } from '../shared/thaiqr.js';
 import * as line from './line.js';
@@ -416,7 +416,7 @@ function catalog(user) {
   const ing = (id) => db.ingredients.find((i) => i.id === id);
   // Ingredient names / units resolved so every user (even without stock access) can read how to make a drink.
   const howTo = (x) => ({
-    ingredients: (x.recipe || []).map((r) => ({ ingredientId: r.ingredientId, name: ing(r.ingredientId)?.name || '-', unit: ing(r.ingredientId)?.unit || '', qty: r.qty })),
+    ingredients: (x.recipe || []).map((r) => ({ ingredientId: r.ingredientId, name: ing(r.ingredientId)?.name || '-', unit: ing(r.ingredientId)?.unit || '', qty: r.qty, role: r.role })),
     steps: (x.steps || []).map((st) => ({
       text: st.text,
       ingredientName: st.ingredientId ? ing(st.ingredientId)?.name || '' : '',
@@ -487,7 +487,9 @@ const required = (v, label) => {
 const cleanRecipe = (recipe) =>
   (Array.isArray(recipe) ? recipe : [])
     .filter((r) => r && getDb().ingredients.some((i) => i.id === r.ingredientId) && Number(r.qty) > 0)
-    .map((r) => ({ ingredientId: r.ingredientId, qty: num(r.qty) }));
+    .map((r) => ({ ingredientId: r.ingredientId, qty: num(r.qty), ...(['sweet', 'fill'].includes(r.role) ? { role: r.role } : {}) }))
+    // one "top up" line per recipe
+    .map((r, i, all) => (r.role === 'fill' && all.findIndex((x) => x.role === 'fill') !== i ? { ingredientId: r.ingredientId, qty: r.qty } : r));
 
 // How-to steps: free text, optionally linked to a stock ingredient + amount (display only, stock is cut by the recipe).
 const cleanSteps = (steps) =>
@@ -538,6 +540,7 @@ crud('menu-items', 'menuItems', 'products', (b) => {
     sort: num(b.sort),
     active: b.active !== false, // sold at the counter (staff POS)
     activeOutside: b.activeOutside !== false, // sold outside / on the customer QR menu
+    cupVolume: Math.min(5000, num(b.cupVolume)), // ml per cup for this menu; 0 = the shop default
   };
 }, { view: menuView });
 
@@ -853,10 +856,10 @@ function applyStock(order, sign, user) {
     for (const r of recipe || []) need.set(r.ingredientId, (need.get(r.ingredientId) || 0) + r.qty * qty);
   };
   for (const l of order.items) {
-    const tops = l.toppings.map((t) => db.toppings.find((x) => x.id === t.id));
-    // What was replaced at sale time (e.g. fresh milk -> oat milk) so a void puts back exactly what was cut.
-    addRecipe(effectiveRecipe(db.menuItems.find((m) => m.id === l.menuItemId), tops, l.replacedIngredientIds), l.qty);
-    for (const t of tops) addRecipe(t?.recipe, l.qty);
+    // Lines record what one cup used at sale time (sweetness, oat milk...), so a void puts back exactly that.
+    if (Array.isArray(l.stockPerCup)) { addRecipe(l.stockPerCup, l.qty); continue; }
+    const tops = l.toppings.map((t) => db.toppings.find((x) => x.id === t.id)).filter(Boolean);
+    addRecipe(cupStock(db.menuItems.find((m) => m.id === l.menuItemId), tops, { replaced: l.replacedIngredientIds }), l.qty);
   }
   const crossedLow = [];
   for (const [ingredientId, qty] of need) {
@@ -1254,7 +1257,7 @@ function publicPayment(s) {
 app.get('/api/settings', h(() => getDb().settings));
 app.put('/api/settings', need('settings'), h((req, res) => {
   const b = req.body || {};
-  const SECTION = { shopName: 'ชื่อร้าน', address: 'ที่อยู่', phone: 'เบอร์', promptPayId: 'พร้อมเพย์', payment: 'วิธีรับเงินโอน', receiptFooter: 'ท้ายใบเสร็จ', sweetnessLevels: 'ความหวาน',
+  const SECTION = { shopName: 'ชื่อร้าน', address: 'ที่อยู่', phone: 'เบอร์', promptPayId: 'พร้อมเพย์', payment: 'วิธีรับเงินโอน', sweetAmounts: 'ปริมาณความหวาน', cupVolume: 'ปริมาณต่อแก้ว', receiptFooter: 'ท้ายใบเสร็จ', sweetnessLevels: 'ความหวาน',
     selfOrder: 'QR สั่งเอง', line: 'LINE', loyalty: 'สะสมแต้ม', contacts: 'ช่องทางติดต่อ' };
   const prevSettings = JSON.parse(JSON.stringify(getDb().settings));
   const s = getDb().settings;
@@ -1263,6 +1266,17 @@ app.put('/api/settings', need('settings'), h((req, res) => {
   if (b.phone !== undefined) s.phone = str(b.phone, 30);
   if (b.promptPayId !== undefined) s.promptPayId = str(b.promptPayId, 20).replace(/[^0-9]/g, '');
   if (b.receiptFooter !== undefined) s.receiptFooter = str(b.receiptFooter, 200);
+  if (b.sweetAmounts && typeof b.sweetAmounts === 'object') {
+    // ml of sweetener per level for a standard cup (100 = 30 ml): every menu's sweetener scales by this ratio
+    const t = {};
+    for (const [k, v] of Object.entries(b.sweetAmounts)) {
+      const lv = Number(k);
+      if (Number.isFinite(lv) && lv >= 0 && lv <= 200 && v !== '' && v != null) t[lv] = Math.min(1000, num(v));
+    }
+    if (!(t[100] > 0)) fail(400, 'กรุณากรอกปริมาณความหวานที่ระดับ 100%');
+    s.sweetAmounts = t;
+  }
+  if (b.cupVolume !== undefined) s.cupVolume = Math.min(5000, num(b.cupVolume));
   if (b.payment && typeof b.payment === 'object') {
     const p = b.payment;
     let shopQr = '';

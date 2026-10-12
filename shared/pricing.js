@@ -51,6 +51,57 @@ export function effectiveRecipe(item, toppings = [], replaced = null) {
   return removed.size ? recipe.filter((r) => !removed.has(r.ingredientId)) : recipe;
 }
 
+// ---------- sweetness -> stock ----------
+// Recipe lines can carry a role: 'sweet' (condensed milk / syrup: scales with the sweetness level) or
+// 'fill' (e.g. fresh milk: takes up whatever the sweetener gave back, so the cup's volume stays the same).
+export const DEFAULT_SWEET_AMOUNTS = { 0: 0, 25: 7, 50: 15, 75: 22, 100: 30 };
+export const DEFAULT_CUP_VOLUME = 180;
+
+/** Share of the 100% sweetener amount for a level, from the shop's table (100 = 30 ml, 50 = 15 ml ...). */
+export function sweetRatio(level, amounts = DEFAULT_SWEET_AMOUNTS) {
+  if (level == null || level === '') return 1; // no level chosen = the recipe as written
+  const table = { ...DEFAULT_SWEET_AMOUNTS, ...(amounts || {}) };
+  const full = Number(table[100]) || 0;
+  if (!(full > 0)) return Number(level) / 100;
+  const v = table[level];
+  return v != null && v !== '' ? Math.max(0, Number(v) || 0) / full : Math.max(0, Number(level)) / 100;
+}
+
+/**
+ * Ingredients for ONE cup of a line: the menu recipe after replacements (oat milk instead of fresh milk)
+ * and sweetness (sweetener scaled, the 'fill' line topped up by the difference), plus the toppings' recipes.
+ * If the fill ingredient was replaced by a topping, that topping's first recipe line takes the top-up instead.
+ * Returns [{ ingredientId, qty }] (same ingredient may appear more than once).
+ */
+export function cupStock(item, chosenToppings = [], { replaced = null, sweetness = null, sweetAmounts } = {}) {
+  const removed = new Set(replaced || chosenToppings.flatMap((t) => t?.replaceIngredientIds || []));
+  const ratio = sweetRatio(sweetness, sweetAmounts);
+  const recipe = item?.recipe || [];
+  let given = 0; // sweetener taken out (or added) vs. the recipe, in recipe units
+  const out = [];
+  for (const r of recipe) {
+    if (r.role !== 'sweet') continue;
+    const q = round2((Number(r.qty) || 0) * ratio);
+    given += (Number(r.qty) || 0) - q;
+    if (!removed.has(r.ingredientId)) out.push({ ingredientId: r.ingredientId, qty: q });
+  }
+  const fill = recipe.find((r) => r.role === 'fill');
+  for (const r of recipe) {
+    if (r.role === 'sweet' || removed.has(r.ingredientId)) continue;
+    const q = Number(r.qty) || 0;
+    out.push({ ingredientId: r.ingredientId, qty: round2(r === fill ? Math.max(0, q + given) : q) });
+  }
+  const fillMovesTo = fill && removed.has(fill.ingredientId)
+    ? chosenToppings.find((t) => (t?.replaceIngredientIds || []).includes(fill.ingredientId) && t.recipe?.length) : null;
+  for (const t of chosenToppings) {
+    (t?.recipe || []).forEach((r, i) => {
+      const extra = t === fillMovesTo && i === 0 ? given : 0;
+      out.push({ ingredientId: r.ingredientId, qty: round2(Math.max(0, (Number(r.qty) || 0) + extra)) });
+    });
+  }
+  return out;
+}
+
 export const CUSTOM_DISCOUNT_ID = 'custom';
 const fmtNum = (n) => String(round2(n));
 
@@ -96,12 +147,18 @@ export function priceLine(input, catalog) {
   // Ingredients of the menu recipe that a chosen topping replaces: not costed here, not cut from stock.
   const recipeIds = new Set((item.recipe || []).map((r) => r.ingredientId));
   const replaced = [...new Set(chosen.flatMap((t) => t.replaceIngredientIds || []))].filter((id) => recipeIds.has(id));
-  const itemCost = replaced.length && item.costMode === 'recipe'
-    ? round2(recipeCost(effectiveRecipe(item, [], replaced), ingredients))
-    : unitCost(item, ingredients);
+  const sweetAmounts = catalog.settings?.sweetAmounts;
+  // What one cup really uses (sweetness + replacements); stored on the line so a void puts back exactly this.
+  const stockPerCup = item.recipe ? cupStock(item, chosen, { replaced, sweetness: input.sweetness, sweetAmounts }) : [];
+  const menuPart = item.recipe ? cupStock(item, [], { replaced, sweetness: input.sweetness, sweetAmounts }) : [];
+  // Costs follow the cup: recipe-costed menus use the adjusted recipe; a topping that took the milk top-up pays for it.
+  const itemCost = item.costMode === 'recipe' && item.recipe?.length ? round2(recipeCost(menuPart, ingredients)) : unitCost(item, ingredients);
+  const topExtra = item.recipe ? round2(recipeCost(stockPerCup, ingredients) - recipeCost(menuPart, ingredients)
+    - chosen.reduce((s, t) => s + recipeCost(t.recipe || [], ingredients), 0)) : 0;
+  const recipeTops = chosen.some((t) => t.costMode === 'recipe');
 
   const unitPrice = round2(Number(item.price) + tops.reduce((s, t) => s + t.price, 0));
-  const unitCostVal = round2(itemCost + tops.reduce((s, t) => s + t.cost, 0));
+  const unitCostVal = round2(itemCost + tops.reduce((s, t) => s + t.cost, 0) + (recipeTops ? topExtra : 0));
   const gross = round2(unitPrice * qty);
 
   let remaining = gross;
@@ -138,6 +195,7 @@ export function priceLine(input, catalog) {
     sweetness: input.sweetness ?? null,
     toppings: tops,
     replacedIngredientIds: replaced,
+    stockPerCup,
     discounts: discs,
     customDiscount: custom,
     note: (input.note || '').toString().slice(0, 200),

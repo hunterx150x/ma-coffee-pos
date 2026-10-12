@@ -1091,3 +1091,23 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .replace-chip { display: inline-flex; align-items: center; gap: 4px; padding-right: 4px; }
 .replace-x { border: 0; background: transparent; color: inherit; padding: 2px; display: grid; place-items: center; cursor: pointer; border-radius: 50%; }
 .howto-replaced td { color: var(--muted); }
+.sweet-table { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.sweet-cell { display: flex; flex-direction: column; gap: 4px; }
+.recipe-role { width: auto; min-width: 0; flex: 0 1 132px; font-size: 13px; padding-left: 8px; padding-right: 22px; }
+.recipe-role.role-sweet { background: #fff6e0; border-color: #eda100; }
+.recipe-role.role-fill { background: var(--info-50); border-color: var(--info); }
+.sweet-preview { display: flex; flex-direction: column; gap: 8px; border-top: 1px dashed var(--line-2); padding-top: 10px; margin-top: 4px; }
+.sweet-preview-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sweet-vol { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.sweet-vol .input { width: 80px; }
+.table-wrap { overflow-x: auto; }
+.sweet-levels th, .sweet-levels td { padding: 6px 8px; font-size: 13px; white-space: nowrap; }
+.recipe-row.recipe-row-role { grid-template-columns: minmax(0, 1fr) 76px 40px 124px 56px 36px; }
+@media (max-width: 599px) {
+  /* ingredient · qty · ✕ on the first line, the role picker under it */
+  .recipe-row.recipe-row-role { grid-template-columns: minmax(0, 1fr) 76px 36px; }
+  .recipe-row.recipe-row-role .recipe-unit, .recipe-row.recipe-row-role .recipe-cost { display: none; }
+  .recipe-row.recipe-row-role .recipe-role { grid-column: 1 / 3; grid-row: 2; flex: none; width: 100%; }
+  .recipe-row.recipe-row-role .icon-btn { grid-column: 3; grid-row: 1; }
+}
+.howto-adjusted td { background: #fff6e0; }
