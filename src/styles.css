@@ -1116,3 +1116,9 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 @media (min-width: 600px) { .tile-sweet .sweet-part b { display: inline; } }
 .cx-sweet .sweet-detail { font-size: 11px; padding: 3px 4px; }
 .cx-sweet .sweet-part b { display: block; }
+.cx-slip-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; padding: 18px 12px; border: 2px dashed var(--line-2); border-radius: 12px; background: var(--surface-2); color: var(--primary-600); font-weight: 600; cursor: pointer; }
+.cx-cash-choice { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.cx-or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.cx-or-line::before, .cx-or-line::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.cx-claimed-cash { background: var(--good-50); color: var(--good); }
+.queue-claim-cash { background: var(--good-50); color: var(--good); }

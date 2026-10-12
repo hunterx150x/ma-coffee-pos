@@ -146,12 +146,16 @@ export default function Queue() {
                   <span className={`badge ${STATUS[x.status].cls}`}>{STATUS[x.status].label}</span>
                 </header>
                 {x.note && <div className="line-note">{x.note}</div>}
-                {x.paymentClaim && x.status !== 'paid' && (
+                {x.paymentClaim && x.status !== 'paid' && (x.paymentClaim.method === 'cash' ? (
+                  <div className="queue-claim queue-claim-cash">
+                    <Icon name="cash" size={16} /> ลูกค้าจะชำระเงินสด {thTime(x.paymentClaim.at)}
+                  </div>
+                ) : (
                   <div className="queue-claim">
                     <Icon name="qr" size={16} /> ลูกค้าแจ้งโอนแล้ว {thTime(x.paymentClaim.at)}
                     {x.paymentClaim.slipId && <button className="btn btn-sm btn-ghost" onClick={() => setSlipQ(x)}>ดูสลิป</button>}
                   </div>
-                )}
+                ))}
                 <div className="queue-lines">
                   {x.lines.map((l, i) => (
                     <div key={i} className="queue-line">
@@ -233,19 +237,23 @@ export default function Queue() {
             )}
             {redeem > 0 && <div className="sum-row text-discount"><span>แลกแต้มฟรี {redeem} แก้ว</span><span>−{baht(redeemValue)}</span></div>}
             <div className="due due-sm"><span>ยอดที่ลูกค้าต้องชำระ</span><b>{baht(payTotal)}</b></div>
-            {payQueue.paymentClaim && (
+            {payQueue.paymentClaim && (payQueue.paymentClaim.method === 'cash' ? (
+              <div className="queue-claim queue-claim-cash">
+                <Icon name="cash" size={16} /> ลูกค้าเลือกชำระเงินสด — รับเงินสดตอนส่งเครื่องดื่ม
+              </div>
+            ) : (
               <div className="queue-claim">
                 <Icon name="qr" size={16} /> ลูกค้าแจ้งโอนแล้ว {thTime(payQueue.paymentClaim.at)} — ตรวจยอดเงินเข้าก่อนยืนยัน
                 {payQueue.paymentClaim.slipId && <button className="btn btn-sm btn-ghost" onClick={() => setSlipQ(payQueue)}>ดูสลิป</button>}
               </div>
-            )}
+            ))}
           </>
         )}
       </Modal>
 
       {cat.data && (
         <PaymentModal open={payOpen} total={payTotal} settings={cat.data.settings} onClose={() => setPayOpen(false)} onPay={pay}
-          defaultMethod={payQueue?.paymentClaim ? 'transfer' : null} />
+          defaultMethod={payQueue?.paymentClaim ? (payQueue.paymentClaim.method === 'cash' ? 'cash' : 'transfer') : null} />
       )}
 
       <Modal open={!!doneOrder} title="ชำระเงินสำเร็จ" onClose={() => setDoneOrder(null)}

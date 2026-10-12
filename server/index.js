@@ -266,6 +266,7 @@ app.get('/api/public/queues/:token', h((req) => {
       promptPayId: db.settings.promptPayId || '',
       ...publicPayment(db.settings),
       claimedAt: q.paymentClaim?.at || null,
+      claimMethod: q.paymentClaim?.method || (q.paymentClaim ? 'transfer' : null),
       hasSlip: Boolean(q.paymentClaim?.slipId),
     },
   };
@@ -279,15 +280,28 @@ app.post('/api/public/queues/:token/paid', h((req) => {
   if (!q) fail(404, 'ไม่พบคิวนี้');
   if (q.status === 'paid' || q.status === 'cancelled') fail(400, q.status === 'paid' ? 'คิวนี้ชำระเงินแล้ว' : 'คิวนี้ถูกยกเลิกแล้ว');
   if ((q.paymentClaim?.count || 0) >= 5) fail(429, 'แจ้งโอนหลายครั้งเกินไป กรุณาติดต่อพนักงาน');
+  // "I'll pay cash at the counter": no slip needed, the staff take cash when the drink is picked up.
+  if (req.body?.method === 'cash') {
+    q.paymentClaim = { at: now(), method: 'cash', slipId: q.paymentClaim?.slipId || null, count: (q.paymentClaim?.count || 0) + 1 };
+    q.updatedAt = now();
+    markDirty('queues', q.createdAt);
+    save();
+    events.broadcast('queues', { id: q.id, status: q.status });
+    audit(req, { category: 'คิว', action: 'ลูกค้าเลือกชำระเงินสด', detail: `คิว ${q.queueNo} ${q.name} · ฿${q.total}`, actor: `ลูกค้า: ${q.name}` });
+    save();
+    return { ok: true };
+  }
   let slipId = q.paymentClaim?.slipId || null;
   const slip = req.body?.slip;
+  // A transfer notice needs the slip, so the staff can check it.
+  if (!slip && !slipId) fail(400, 'กรุณาแนบสลิปการโอนเงินก่อนแจ้งโอน');
   if (slip) {
     if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(slip) || slip.length > MAX_SLIP_CHARS) fail(400, 'ไฟล์สลิปไม่ถูกต้อง หรือใหญ่เกินไป');
     const row = { id: uid(), queueId: q.id, image: slip, createdAt: now() };
     db.slips.push(row);
     slipId = row.id;
   }
-  q.paymentClaim = { at: now(), slipId, count: (q.paymentClaim?.count || 0) + 1 };
+  q.paymentClaim = { at: now(), method: 'transfer', slipId, count: (q.paymentClaim?.count || 0) + 1 };
   q.updatedAt = now();
   markDirty('queues', q.createdAt);
   save();

@@ -497,6 +497,10 @@ function PaySection({ token, q, onClaimed }) {
   const ppId = q.payment?.promptPayId;
   const isShopQr = q.payment?.mode === 'shopqr' && !!q.payment.shopQr;
   const isAccount = q.payment?.mode === 'account' && !!q.payment.accountNo;
+  const claim = q.payment?.claimedAt ? q.payment.claimMethod || 'transfer' : null;
+  // Chose "pay cash" but changed their mind: show the transfer QR again (nothing changes until they send a slip).
+  const [showTransfer, setShowTransfer] = useState(false);
+  const cashChosen = claim === 'cash' && !showTransfer;
 
   useEffect(() => {
     const payload = transferQrPayload(q.payment, ppId, q.total);
@@ -520,12 +524,13 @@ function PaySection({ token, q, onClaimed }) {
       setErr(e.message);
     }
   };
-  const claim = async () => {
+  const sendClaim = async (body) => {
     setBusy(true);
     setErr('');
     try {
-      await publicApi(`/queues/${token}/paid`, { method: 'POST', body: slip ? { slip } : {} });
+      await publicApi(`/queues/${token}/paid`, { method: 'POST', body });
       setSlip(null);
+      setShowTransfer(false);
       onClaimed();
     } catch (e) {
       setErr(e.message);
@@ -534,10 +539,18 @@ function PaySection({ token, q, onClaimed }) {
     }
   };
 
+  const canTransfer = !!(qr || isAccount);
   return (
     <section className="cx-pay">
       <div className="due"><span>ยอดที่ต้องชำระ</span><b>{baht(q.total)}</b></div>
-      {qr || isAccount ? (
+      {cashChosen ? (
+        <div className="cx-pay-card cx-cash-card">
+          <div className="cx-pay-title"><Icon name="cash" size={18} /> ชำระด้วยเงินสด</div>
+          <div className="cx-pay-amount">{baht(q.total)}</div>
+          <div className="cx-claimed cx-claimed-cash"><Icon name="check" size={18} stroke={3} /> แจ้งร้านแล้ว · ชำระเงินสดที่เคาน์เตอร์ตอนรับเครื่องดื่ม</div>
+          {canTransfer && <button className="btn btn-sm btn-ghost" onClick={() => setShowTransfer(true)}>เปลี่ยนเป็นโอนเงิน</button>}
+        </div>
+      ) : canTransfer ? (
         <div className="cx-pay-card">
           {isAccount ? (
             <>
@@ -558,27 +571,45 @@ function PaySection({ token, q, onClaimed }) {
             </>
           )}
 
-          {q.payment.claimedAt ? (
+          {claim === 'transfer' ? (
             <div className="cx-claimed">
               <Icon name="check" size={18} stroke={3} /> แจ้งโอนแล้ว{q.payment.hasSlip ? ' (แนบสลิป)' : ''} · รอพนักงานตรวจสอบ
             </div>
           ) : (
             <div className="cx-claim">
-              <div className="muted small">โอนเสร็จแล้ว แจ้งร้านได้เลย (แนบสลิปหรือไม่ก็ได้)</div>
-              {slip && <img className="cx-slip" src={slip} alt="สลิป" />}
-              <div className="cx-pay-tools">
-                <button className="btn btn-sm btn-ghost" onClick={() => fileRef.current?.click()}>
-                  <Icon name="upload" size={16} /> {slip ? 'เปลี่ยนสลิป' : 'แนบสลิป'}
+              <div className="muted small">โอนเสร็จแล้ว แนบสลิปเพื่อแจ้งร้าน</div>
+              {slip ? <img className="cx-slip" src={slip} alt="สลิป" /> : (
+                <button className="cx-slip-drop" onClick={() => fileRef.current?.click()}>
+                  <Icon name="upload" size={22} /><span>แตะเพื่อแนบสลิปการโอน</span>
                 </button>
-                <button className="btn btn-success" disabled={busy} onClick={claim}>{busy ? 'กำลังแจ้ง...' : 'แจ้งโอนแล้ว'}</button>
+              )}
+              <div className="cx-pay-tools">
+                {slip && (
+                  <button className="btn btn-sm btn-ghost" onClick={() => fileRef.current?.click()}>
+                    <Icon name="upload" size={16} /> เปลี่ยนสลิป
+                  </button>
+                )}
+                <button className="btn btn-success" disabled={busy || !slip} onClick={() => sendClaim({ slip })}>
+                  {busy ? 'กำลังแจ้ง...' : 'แจ้งโอนแล้ว'}
+                </button>
               </div>
+              {!slip && <div className="muted small">ต้องแนบสลิปก่อน จึงจะกดแจ้งโอนได้</div>}
               <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickSlip(e.target.files[0]); e.target.value = ''; }} />
             </div>
           )}
           {err && <div className="field-error">{err}</div>}
         </div>
       ) : null}
-      <div className="muted small cx-hint">{qr || isAccount ? 'หรือชำระด้วยเงินสดที่หน้าร้านก็ได้' : 'ชำระเงินที่หน้าร้านเมื่อรับเครื่องดื่ม'}</div>
+
+      {!cashChosen && claim !== 'transfer' && (
+        <div className="cx-cash-choice">
+          {canTransfer && <div className="cx-or-line"><span>หรือ</span></div>}
+          <button className="btn btn-outline btn-block btn-lg" disabled={busy} onClick={() => sendClaim({ method: 'cash' })}>
+            <Icon name="cash" size={20} /> ชำระด้วยเงินสดที่ร้าน
+          </button>
+          {!canTransfer && err && <div className="field-error">{err}</div>}
+        </div>
+      )}
     </section>
   );
 }
