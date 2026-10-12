@@ -2,9 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { priceLine, summarize, roastChoices } from '../../shared/pricing.js';
-import { baht, sweetLabel, sweetDesc, transferQrPayload } from '../utils.js';
+import { baht, sweetLabel, sweetDesc, sweetParts, transferQrPayload } from '../utils.js';
 import BankAccount from '../components/BankAccount.jsx';
-import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
+import { Empty, Icon, Loading, Modal, SweetDetail } from '../components/ui.jsx';
 import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
 import ContactBar from '../components/Contacts.jsx';
 import StampCard from '../components/StampCard.jsx';
@@ -297,6 +297,7 @@ function ItemSheet({ item, menu, onClose, onAdd }) {
                 <span className="sweet-meter"><span style={{ height: `${Math.min(100, lv)}%` }} /></span>
                 <span className="tile-name">{lv}%</span>
                 <span className="muted small">{sweetDesc(lv)}</span>
+                <SweetDetail parts={sweetParts(item.sweeteners, lv, menu.sweetAmounts)} />
               </button>
             ))}
           </div>

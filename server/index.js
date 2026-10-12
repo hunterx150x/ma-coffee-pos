@@ -162,10 +162,18 @@ app.get('/api/public/menu', h(() => {
     message: db.settings.selfOrder?.message || '',
     loyalty: db.settings.loyalty?.enabled ? { cupsPerReward: db.settings.loyalty.cupsPerReward, rewardMaxValue: db.settings.loyalty.rewardMaxValue } : null,
     sweetnessLevels: db.settings.sweetnessLevels,
+    sweetAmounts: db.settings.sweetAmounts,
     categories: cats.map(({ id, name, icon, requireRoast }) => ({ id, name, icon, requireRoast: !!requireRoast })),
     // The customer QR menu follows the "sell outside" switch, not the counter switch.
     menuItems: db.menuItems.filter((m) => m.activeOutside !== false && catIds.has(m.categoryId)).sort(bySort)
-      .map((m) => ({ id: m.id, categoryId: m.categoryId, name: m.name, price: m.price, imageUrl: imageUrl(m) })),
+      .map((m) => ({
+        id: m.id, categoryId: m.categoryId, name: m.name, price: m.price, imageUrl: imageUrl(m),
+        // only the sweetener lines (short name + amount at 100%), so customers see what each sweetness level means
+        sweeteners: (m.recipe || []).filter((r) => r.role === 'sweet').map((r) => {
+          const i = db.ingredients.find((x) => x.id === r.ingredientId);
+          return { name: (i?.name || '').split(' ')[0], qty: r.qty, unit: i?.unit || '' };
+        }),
+      })),
     toppings: db.toppings.filter((t) => t.activeOutside !== false).sort(bySort).map(({ id, name, price, isRoast }) => ({ id, name, price, isRoast: !!isRoast })),
   };
 }));

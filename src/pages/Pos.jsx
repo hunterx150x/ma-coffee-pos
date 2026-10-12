@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { priceLine, summarize, stampsEarned, rewardsAvailable, roastChoices, cleanCustomDiscount } from '../../shared/pricing.js';
-import { baht, discountLabel, sweetLabel, sweetDesc, initial, APP_NAMES, payLabel } from '../utils.js';
-import { Icon, Modal, Field, Loading, ErrorBox, Empty, NumberInput, useAsync, useUi } from '../components/ui.jsx';
+import { baht, discountLabel, sweetLabel, sweetDesc, sweetParts, initial, APP_NAMES, payLabel } from '../utils.js';
+import { Icon, Modal, Field, Loading, ErrorBox, Empty, NumberInput, SweetDetail, useAsync, useUi } from '../components/ui.jsx';
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
 import HowToModal from '../components/HowTo.jsx';
@@ -108,6 +108,8 @@ export default function Pos({ go }) {
   const cd = draft.customDiscount;
   const customMissingName = !!cd && Number(cd.value) > 0 && !cd.name.trim();
   const isApp = customer.type === 'app';
+  // The menu's 🍯 sweetener lines, to show what each sweetness level puts in the cup (step 4).
+  const sweeteners = (draftItem?.howTo?.ingredients || []).filter((r) => r.role === 'sweet');
   const rewardExcluded = !draftItem || (loyalty?.excludeCategoryIds || []).includes(draftItem.categoryId);
   const rewardUsedElsewhere = cart.reduce((s, c, i) => s + (i === draft.editIndex ? 0 : c.rewardQty || 0), 0);
   const rewardRoom = customer.type === 'old' && loyalty?.enabled && !rewardExcluded
@@ -303,6 +305,7 @@ export default function Pos({ go }) {
                   <span className="sweet-meter"><span style={{ height: `${Math.min(100, lv)}%` }} /></span>
                   <span className="tile-name">{lv}%</span>
                   <span className="muted small">{sweetDesc(lv)}</span>
+                  <SweetDetail parts={sweetParts(sweeteners, lv, catalog.settings.sweetAmounts)} />
                 </button>
               ))}
             </div>

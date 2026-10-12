@@ -272,3 +272,17 @@ export function NumberInput({ value, onChange, step = 'any', min = 0, ...rest })
       onFocus={(e) => e.target.select()} {...rest} />
   );
 }
+
+/** Sweetness tile caption: sweetener name, then its amount on its own line (never split mid-number). */
+export function SweetDetail({ parts }) {
+  if (!parts?.length) return null;
+  if (parts.every((p) => p.qty === 0)) return <span className="sweet-detail">ไม่ใส่{parts.map((p) => p.name).join(' / ')}</span>;
+  return (
+    <span className="sweet-detail">
+      {parts.map((p, i) => (
+        <span key={i} className="sweet-part">{p.name} <b>{nfSweet.format(p.qty)} {p.unit}</b></span>
+      ))}
+    </span>
+  );
+}
+const nfSweet = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });

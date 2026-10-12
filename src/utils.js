@@ -1,4 +1,5 @@
 import { thaiQrWithAmount } from '../shared/thaiqr.js';
+import { round2 as r2, sweetRatio } from '../shared/pricing.js';
 const pad = (n) => String(n).padStart(2, '0');
 
 export const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -49,6 +50,24 @@ export const thDateTime = (iso) => `${thDate(iso)} ${thTime(iso)}`;
 
 export const sweetLabel = (s) => (s == null ? '' : `หวาน ${s}%`);
 export const sweetDesc = (lv) => (lv === 0 ? 'ไม่หวาน' : lv <= 25 ? 'หวานน้อย' : lv <= 50 ? 'หวานกลาง' : lv <= 75 ? 'หวานมาก' : 'หวานปกติ');
+
+/** "นมข้นหวาน 2000 มล." -> "นมข้นหวาน" (drop brand / pack size). */
+export const shortIngName = (name = '') => String(name).split(' ')[0];
+
+/**
+ * What a sweetness level puts in the cup for this menu, e.g. "นมข้นหวาน 15 มล."
+ * sweeteners: the menu's 🍯 recipe lines [{ name, qty, unit }]; '' when the menu has none.
+ */
+export function sweetParts(sweeteners, level, amounts) {
+  const ratio = sweetRatio(level, amounts);
+  return (sweeteners || []).map((s) => ({ name: shortIngName(s.name), qty: r2((Number(s.qty) || 0) * ratio), unit: s.unit || '' }));
+}
+export function sweetDetail(sweeteners, level, amounts) {
+  const parts = sweetParts(sweeteners, level, amounts);
+  if (!parts.length) return '';
+  if (parts.every((p) => p.qty === 0)) return `ไม่ใส่${parts.map((p) => p.name).join(' / ')}`;
+  return parts.map((p) => `${p.name} ${num(p.qty)} ${p.unit}`.trim()).join(' + ');
+}
 
 export const APP_NAMES = { grab: 'Grab', lineman: 'LINE MAN' };
 /** เงินสด / เงินโอน / Grab / LINE MAN */
