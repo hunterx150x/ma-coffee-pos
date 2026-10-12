@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { load, getDb, save, flush, markDirty, uid, now, replaceDb, COLLECTIONS } from './db.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
 import { buildReport, parseRange, inRange, localDate, cashDrawer, APPS } from './report.js';
-import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable, cleanCustomDiscount, roastChoices } from '../shared/pricing.js';
+import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable, cleanCustomDiscount, roastChoices, effectiveRecipe } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import { checkThaiQr, thaiQrWithAmount } from '../shared/thaiqr.js';
 import * as line from './line.js';
@@ -416,7 +416,7 @@ function catalog(user) {
   const ing = (id) => db.ingredients.find((i) => i.id === id);
   // Ingredient names / units resolved so every user (even without stock access) can read how to make a drink.
   const howTo = (x) => ({
-    ingredients: (x.recipe || []).map((r) => ({ name: ing(r.ingredientId)?.name || '-', unit: ing(r.ingredientId)?.unit || '', qty: r.qty })),
+    ingredients: (x.recipe || []).map((r) => ({ ingredientId: r.ingredientId, name: ing(r.ingredientId)?.name || '-', unit: ing(r.ingredientId)?.unit || '', qty: r.qty })),
     steps: (x.steps || []).map((st) => ({
       text: st.text,
       ingredientName: st.ingredientId ? ing(st.ingredientId)?.name || '' : '',
@@ -551,6 +551,9 @@ crud('toppings', 'toppings', 'products', (b) => ({
   active: b.active !== false,
   activeOutside: b.activeOutside !== false,
   isRoast: b.isRoast === true, // a coffee roast choice (switch it off when those beans run out)
+  // Menu-recipe ingredients this topping is used instead of (oat milk -> fresh milk): not cut from stock when chosen.
+  replaceIngredientIds: [...new Set(Array.isArray(b.replaceIngredientIds) ? b.replaceIngredientIds : [])]
+    .filter((id) => getDb().ingredients.some((i) => i.id === id)).slice(0, 10),
 }));
 
 crud('discounts', 'discounts', 'products', (b) => ({
@@ -850,8 +853,10 @@ function applyStock(order, sign, user) {
     for (const r of recipe || []) need.set(r.ingredientId, (need.get(r.ingredientId) || 0) + r.qty * qty);
   };
   for (const l of order.items) {
-    addRecipe(db.menuItems.find((m) => m.id === l.menuItemId)?.recipe, l.qty);
-    for (const t of l.toppings) addRecipe(db.toppings.find((x) => x.id === t.id)?.recipe, l.qty);
+    const tops = l.toppings.map((t) => db.toppings.find((x) => x.id === t.id));
+    // What was replaced at sale time (e.g. fresh milk -> oat milk) so a void puts back exactly what was cut.
+    addRecipe(effectiveRecipe(db.menuItems.find((m) => m.id === l.menuItemId), tops, l.replacedIngredientIds), l.qty);
+    for (const t of tops) addRecipe(t?.recipe, l.qty);
   }
   const crossedLow = [];
   for (const [ingredientId, qty] of need) {

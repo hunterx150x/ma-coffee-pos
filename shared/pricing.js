@@ -40,6 +40,17 @@ export function discountAmount(discount, unitPrice, qty) {
   }
 }
 
+/**
+ * Menu recipe for one cup after the chosen toppings that replace an ingredient
+ * (e.g. "oat milk" replaces fresh milk: the fresh milk line is dropped, the topping's own recipe adds the oat milk).
+ * `replaced` = ingredient ids to drop; defaults to what the toppings say.
+ */
+export function effectiveRecipe(item, toppings = [], replaced = null) {
+  const removed = new Set(replaced || toppings.flatMap((t) => t?.replaceIngredientIds || []));
+  const recipe = item?.recipe || [];
+  return removed.size ? recipe.filter((r) => !removed.has(r.ingredientId)) : recipe;
+}
+
 export const CUSTOM_DISCOUNT_ID = 'custom';
 const fmtNum = (n) => String(round2(n));
 
@@ -80,13 +91,17 @@ export function priceLine(input, catalog) {
   const qty = Math.max(1, Math.floor(Number(input.qty) || 1));
   const cat = categories.find((c) => c.id === item.categoryId);
 
-  const tops = (input.toppingIds || [])
-    .map((id) => toppings.find((t) => t.id === id))
-    .filter(Boolean)
-    .map((t) => ({ id: t.id, name: t.name, price: round2(t.price), cost: unitCost(t, ingredients) }));
+  const chosen = (input.toppingIds || []).map((id) => toppings.find((t) => t.id === id)).filter(Boolean);
+  const tops = chosen.map((t) => ({ id: t.id, name: t.name, price: round2(t.price), cost: unitCost(t, ingredients) }));
+  // Ingredients of the menu recipe that a chosen topping replaces: not costed here, not cut from stock.
+  const recipeIds = new Set((item.recipe || []).map((r) => r.ingredientId));
+  const replaced = [...new Set(chosen.flatMap((t) => t.replaceIngredientIds || []))].filter((id) => recipeIds.has(id));
+  const itemCost = replaced.length && item.costMode === 'recipe'
+    ? round2(recipeCost(effectiveRecipe(item, [], replaced), ingredients))
+    : unitCost(item, ingredients);
 
   const unitPrice = round2(Number(item.price) + tops.reduce((s, t) => s + t.price, 0));
-  const unitCostVal = round2(unitCost(item, ingredients) + tops.reduce((s, t) => s + t.cost, 0));
+  const unitCostVal = round2(itemCost + tops.reduce((s, t) => s + t.cost, 0));
   const gross = round2(unitPrice * qty);
 
   let remaining = gross;
@@ -122,6 +137,7 @@ export function priceLine(input, catalog) {
     price: round2(item.price),
     sweetness: input.sweetness ?? null,
     toppings: tops,
+    replacedIngredientIds: replaced,
     discounts: discs,
     customDiscount: custom,
     note: (input.note || '').toString().slice(0, 200),

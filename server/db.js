@@ -101,6 +101,14 @@ function migrate(d) {
     done.add('roast-v1');
     done.add('roast-v2');
   }
+  if (!done.has('replace-milk-v1')) {
+    // Oat-milk style toppings replace the fresh milk in the menu recipe instead of being cut on top of it.
+    const freshMilk = d.ingredients.filter((i) => /^นมสด/.test(i.name)).map((i) => i.id);
+    for (const t of d.toppings) {
+      if (t.replaceIngredientIds === undefined) t.replaceIngredientIds = /โอ๊ต|oat|อัลมอนด์|almond|ถั่วเหลือง|soy/i.test(t.name) ? freshMilk : [];
+    }
+    done.add('replace-milk-v1');
+  }
   if (!done.has('audit-v1')) {
     // Extra password for the owner-only activity log (kept hashed, outside backups).
     d.meta.auditPasswordHash = d.meta.auditPasswordHash || hashPassword(process.env.AUDIT_PASSWORD || '252525');

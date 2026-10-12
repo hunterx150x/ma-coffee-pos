@@ -5,7 +5,10 @@ import { Empty, Icon, Modal } from './ui.jsx';
 export default function HowToModal({ line, catalog, onClose }) {
   const item = line && catalog?.menuItems.find((m) => m.id === line.menuItemId);
   const howTo = item?.howTo || { ingredients: [], steps: [] };
-  const toppings = (line?.toppings || []).map((t) => ({ ...t, howTo: catalog?.toppings.find((x) => x.id === t.id)?.howTo }));
+  const toppings = (line?.toppings || []).map((t) => ({ ...t, ...catalog?.toppings.find((x) => x.id === t.id), howTo: catalog?.toppings.find((x) => x.id === t.id)?.howTo }));
+  // Menu ingredients a chosen topping replaces (e.g. fresh milk when oat milk is picked).
+  const replaced = new Set(line?.replacedIngredientIds || toppings.flatMap((t) => t.replaceIngredientIds || []));
+  const replacedBy = (ingredientId) => replaced.has(ingredientId) && toppings.find((t) => (t.replaceIngredientIds || []).includes(ingredientId));
 
   return (
     <Modal open={!!line} title={`วิธีทำ · ${line?.name || ''}`} onClose={onClose}
@@ -43,9 +46,14 @@ export default function HowToModal({ line, catalog, onClose }) {
               <h4 className="howto-h">ส่วนผสมต่อ 1 แก้ว</h4>
               <table className="table howto-table">
                 <tbody>
-                  {howTo.ingredients.map((r, i) => (
-                    <tr key={i}><td>{r.name}</td><td className="num">{num(r.qty)} {r.unit}</td></tr>
-                  ))}
+                  {howTo.ingredients.map((r, i) => {
+                    const by = replacedBy(r.ingredientId);
+                    return by ? (
+                      <tr key={i} className="howto-replaced"><td><s>{r.name}</s> <span className="small">→ ใช้ {by.name} แทน</span></td><td className="num"><s>{num(r.qty)} {r.unit}</s></td></tr>
+                    ) : (
+                      <tr key={i}><td>{r.name}</td><td className="num">{num(r.qty)} {r.unit}</td></tr>
+                    );
+                  })}
                   {toppings.flatMap((t) => (t.howTo?.ingredients || []).map((r, i) => (
                     <tr key={`${t.id}-${i}`}><td>{r.name} <span className="muted small">({t.name})</span></td><td className="num">{num(r.qty)} {r.unit}</td></tr>
                   )))}

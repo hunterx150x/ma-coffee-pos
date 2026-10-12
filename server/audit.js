@@ -179,6 +179,7 @@ export function describeRecord(r) {
     out.push(`${label} ${show(k, r[k])}`);
   }
   if (r.recipe?.length) out.push(`สูตร: ${recipeText(r.recipe)}`);
+  if (r.replaceIngredientIds?.length) out.push(`ใช้แทน: ${r.replaceIngredientIds.map((id) => ingName(id)?.name || '?').join(', ')}`);
   if (r.steps?.length) out.push(`วิธีทำ ${r.steps.length} ขั้นตอน`);
   if (r.image) out.push('มีรูป');
   return out.join(' · ');
@@ -198,6 +199,9 @@ export function describeChanges(before, after) {
     out.push(n0 === n1 ? 'แก้วิธีทำ' : `วิธีทำ ${n0}→${n1} ขั้นตอน`);
   }
   if ((before.image || '') !== (after.image || '')) out.push(after.image ? 'เปลี่ยนรูป' : 'ลบรูป');
+  if (!same(before.replaceIngredientIds || [], after.replaceIngredientIds || [])) {
+    out.push(`ใช้แทน: ${(after.replaceIngredientIds || []).map((id) => ingName(id)?.name || '?').join(', ') || '-'}`);
+  }
   if (!same(before.permissions || [], after.permissions || []) && after.permissions) out.push(`สิทธิ์: ${(after.permissions || []).join(', ') || '-'}`);
   return out.join(', ');
 }

@@ -388,7 +388,9 @@ function Toppings({ ings }) {
                 const cost = costOf(t, ings);
                 return (
                   <tr key={t.id} onClick={() => crud.open(t)} className={t.active || t.activeOutside !== false ? '' : 'row-dim'}>
-                    <td><b>{t.name}</b>{t.isRoast && <span className="badge badge-roast">ระดับคั่ว</span>}</td>
+                    <td><b>{t.name}</b>{t.isRoast && <span className="badge badge-roast">ระดับคั่ว</span>}
+                      {t.replaceIngredientIds?.length > 0 && <div className="muted small">ใช้แทน {t.replaceIngredientIds.map((id) => ings.find((i) => i.id === id)?.name).filter(Boolean).join(', ')}</div>}
+                    </td>
                     <td className="num">+{baht(t.price)}</td>
                     <td className="num">{baht(cost)}</td>
                     <td className="num hide-sm"><Margin price={t.price} cost={cost} /></td>
@@ -410,6 +412,7 @@ function Toppings({ ings }) {
               <Field label="ลำดับการแสดง"><NumberInput value={f.sort} onChange={(v) => setF({ ...f, sort: v })} step="1" /></Field>
             </div>
             <CostEditor f={f} setF={setF} ings={ings} />
+            <ReplacePicker ids={f.replaceIngredientIds || []} ings={ings} onChange={(replaceIngredientIds) => setF({ ...f, replaceIngredientIds })} />
             <div className="toggle-list">
               <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
               <Toggle checked={f.activeOutside !== false} onChange={(v) => setF({ ...f, activeOutside: v })} label="ขายนอกสถานที่ / ลูกค้าสแกน QR สั่งเอง" />
@@ -419,6 +422,31 @@ function Toppings({ ings }) {
         )}
       </EditorModal>
     </>
+  );
+}
+
+/** Topping that is used instead of a menu ingredient (oat milk instead of fresh milk): pick which ingredients it replaces. */
+function ReplacePicker({ ids, ings, onChange }) {
+  const left = ings.filter((i) => !ids.includes(i.id));
+  return (
+    <Field label="ใช้แทนวัตถุดิบในสูตรเมนู (ถ้ามี)"
+      hint="เช่น “นมโอ๊ต” ใช้แทน “นมสด” — เมื่อเลือกท็อปปิ้งนี้ ระบบจะไม่ตัดสต๊อกและไม่คิดต้นทุนวัตถุดิบที่เลือกจากสูตรเมนู แต่ตัดตามสูตรของท็อปปิ้งนี้แทน">
+      <div className="replace-list">
+        {ids.map((id) => {
+          const i = ings.find((x) => x.id === id);
+          return (
+            <span key={id} className="chip active replace-chip">
+              {i?.name || 'วัตถุดิบที่ถูกลบ'}
+              <button type="button" className="replace-x" onClick={() => onChange(ids.filter((x) => x !== id))} aria-label={`เอา ${i?.name || ''} ออก`}><Icon name="x" size={14} /></button>
+            </span>
+          );
+        })}
+        <select className="input input-auto" value="" onChange={(e) => e.target.value && onChange([...ids, e.target.value])} aria-label="เพิ่มวัตถุดิบที่ใช้แทน">
+          <option value="">+ เลือกวัตถุดิบที่ถูกแทน</option>
+          {left.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+        </select>
+      </div>
+    </Field>
   );
 }
 
