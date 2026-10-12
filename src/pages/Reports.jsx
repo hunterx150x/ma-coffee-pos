@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { baht, num, presetRange, thDate, downloadCsv } from '../utils.js';
+import { baht, num, presetRange, thDate, thDateTime, downloadCsv } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Icon, Loading, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
 import { summaryRows, detailRows } from '../reportExport.js';
 import SalesSheet from './SalesSheet.jsx';
@@ -58,9 +58,21 @@ export default function Reports() {
             <Kpi label="ยอดขายสุทธิ" value={baht(t.sales)} sub={`${num(t.orders)} บิล · ${num(t.cups)} แก้ว`} hero />
             <Kpi label="เงินสด" value={baht(t.cash)} sub={`${t.cashCount} บิล`} icon="cash" />
             <Kpi label="เงินโอน" value={baht(t.transfer)} sub={`${t.transferCount} บิล`} icon="qr" />
+            {t.appCount > 0 && <Kpi label="ขายในแอพ" value={baht(t.app)} sub={`Grab ${t.byApp.grab.orders} · LINE MAN ${t.byApp.lineman.orders} บิล`} icon="queue" />}
             <Kpi label={t.netProfit >= 0 ? 'กำไรสุทธิ' : 'ขาดทุนสุทธิ'} value={`${t.netProfit < 0 ? '−' : ''}${baht(Math.abs(t.netProfit))}`}
               sub={`กำไรขั้นต้น ${baht(t.grossProfit)} (${num(t.grossMargin)}%)`} tone={t.netProfit >= 0 ? 'good' : 'bad'} />
           </div>
+
+          {r.cashDrawer ? (
+            <div className="capital-all pos cash-strip">
+              <Icon name="cash" size={16} />
+              <span>เงินสดคงเหลือในร้านตอนนี้</span>
+              <b>{baht(r.cashDrawer.balance)}</b>
+              <span className="muted small">นับล่าสุด {thDateTime(r.cashDrawer.since)} · ดู/นับเงินได้ที่เมนูค่าใช้จ่าย</span>
+            </div>
+          ) : (
+            <div className="capital-all cash-strip"><Icon name="cash" size={16} /><span className="muted">ยังไม่ได้ตั้งยอดเงินสดในร้าน — ตั้งได้ที่เมนูค่าใช้จ่าย</span></div>
+          )}
 
           <ChartPicker prefs={prefs} singleDay={singleDay} />
           <div className={`report-grid ${prefs.isOn('trend') ? '' : 'report-grid-single'}`}>

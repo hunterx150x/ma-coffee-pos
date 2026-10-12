@@ -11,7 +11,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 export const COLLECTIONS = [
   'users', 'customers', 'categories', 'menuItems', 'toppings', 'discounts',
-  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves', 'leads', 'capital', 'auditLogs',
+  'ingredients', 'stockMoves', 'orders', 'expenses', 'queues', 'slips', 'pointMoves', 'leads', 'capital', 'auditLogs', 'cashMoves',
 ];
 // Collections that grow with every sale are stored one row per month in Postgres,
 // so a new sale rewrites only the current month instead of the whole history.
@@ -91,6 +91,12 @@ function migrate(d) {
       if (u.role === 'staff' && (u.permissions || []).includes('pos') && !u.permissions.includes('queue')) u.permissions.push('queue');
     }
     done.add('queue-permission');
+  }
+  if (!done.has('roast-v1')) {
+    // Coffee menus must pick a roast; the existing "คั่ว…" toppings are the roast choices.
+    for (const c of d.categories) if (c.requireRoast === undefined) c.requireRoast = /coffee|กาแฟ/i.test(c.name);
+    for (const t of d.toppings) if (t.isRoast === undefined) t.isRoast = /^คั่ว/.test(t.name);
+    done.add('roast-v1');
   }
   if (!done.has('audit-v1')) {
     // Extra password for the owner-only activity log (kept hashed, outside backups).

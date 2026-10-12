@@ -5,8 +5,8 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { load, getDb, save, flush, markDirty, uid, now, replaceDb, COLLECTIONS } from './db.js';
 import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js';
-import { buildReport, parseRange, inRange, localDate } from './report.js';
-import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable } from '../shared/pricing.js';
+import { buildReport, parseRange, inRange, localDate, cashDrawer, APPS } from './report.js';
+import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable, cleanCustomDiscount, roastChoices } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
 import * as line from './line.js';
 import * as events from './events.js';
@@ -161,11 +161,11 @@ app.get('/api/public/menu', h(() => {
     message: db.settings.selfOrder?.message || '',
     loyalty: db.settings.loyalty?.enabled ? { cupsPerReward: db.settings.loyalty.cupsPerReward, rewardMaxValue: db.settings.loyalty.rewardMaxValue } : null,
     sweetnessLevels: db.settings.sweetnessLevels,
-    categories: cats.map(({ id, name, icon }) => ({ id, name, icon })),
+    categories: cats.map(({ id, name, icon, requireRoast }) => ({ id, name, icon, requireRoast: !!requireRoast })),
     // The customer QR menu follows the "sell outside" switch, not the counter switch.
     menuItems: db.menuItems.filter((m) => m.activeOutside !== false && catIds.has(m.categoryId)).sort(bySort)
       .map((m) => ({ id: m.id, categoryId: m.categoryId, name: m.name, price: m.price, imageUrl: imageUrl(m) })),
-    toppings: db.toppings.filter((t) => t.activeOutside !== false).sort(bySort).map(({ id, name, price }) => ({ id, name, price })),
+    toppings: db.toppings.filter((t) => t.activeOutside !== false).sort(bySort).map(({ id, name, price, isRoast }) => ({ id, name, price, isRoast: !!isRoast })),
   };
 }));
 
@@ -201,6 +201,7 @@ app.post('/api/public/orders', express.json({ limit: '64kb' }), h((req) => {
     note: i.note,
     qty: i.qty,
   }));
+  checkRoast(items, { outside: true });
   // Optional phone = stamp card member (existing member is matched by phone, otherwise signed up).
   let member = null;
   const phone = phoneDigits(b.phone);
@@ -502,6 +503,7 @@ crud('categories', 'categories', 'products', (b) => ({
   sort: num(b.sort),
   active: b.active !== false,
   activeOutside: b.activeOutside !== false,
+  requireRoast: b.requireRoast === true, // menus in this category must pick one roast topping
 }), {
   canDelete: (c) => {
     if (getDb().menuItems.some((m) => m.categoryId === c.id)) fail(400, 'ยังมีเมนูอยู่ในประเภทนี้ กรุณาย้ายหรือลบเมนูก่อน');
@@ -546,6 +548,7 @@ crud('toppings', 'toppings', 'products', (b) => ({
   sort: num(b.sort),
   active: b.active !== false,
   activeOutside: b.activeOutside !== false,
+  isRoast: b.isRoast === true, // a coffee roast choice (switch it off when those beans run out)
 }));
 
 crud('discounts', 'discounts', 'products', (b) => ({
@@ -562,6 +565,7 @@ crud('expenses', 'expenses', 'expenses', (b) => ({
   category: str(b.category, 40) || 'อื่นๆ',
   description: required(str(b.description, 120), 'รายละเอียด'),
   amount: num(b.amount),
+  paidFromCash: b.paidFromCash === true, // taken out of the shop's cash drawer
   sort: 0,
 }));
 // Expenses list should be newest first and filterable by date range.
@@ -570,6 +574,55 @@ app.get('/api/expenses-range', need('expenses'), h((req) => {
   return getDb().expenses
     .filter((e) => e.date >= range.from && e.date <= range.to)
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+}));
+
+// ---------- cash in the shop (cash drawer) ----------
+const CASH_TYPES = { set: 'ตั้งยอด / นับเงิน', in: 'นำเงินเข้า', out: 'นำเงินออก' };
+app.get('/api/cash', anyOf('expenses', 'reports'), h(() => {
+  const db = getDb();
+  const drawer = cashDrawer(db);
+  // Ledger since the last count: manual moves, expenses paid from the drawer, and cash sales per day.
+  const since = drawer?.since || '';
+  const rows = (db.cashMoves || []).filter((m) => m.createdAt >= since).map((m) => ({
+    at: m.createdAt, kind: m.type, label: CASH_TYPES[m.type], note: m.note, user: m.userName,
+    amount: m.type === 'out' ? -m.amount : m.amount,
+  }));
+  if (drawer) {
+    for (const e of db.expenses.filter((x) => x.paidFromCash && x.createdAt > since)) {
+      rows.push({ at: e.createdAt, kind: 'expense', label: `ค่าใช้จ่าย · ${e.category}`, note: e.description, user: '', amount: -e.amount });
+    }
+    const byDay = new Map();
+    for (const o of db.orders.filter((x) => x.paymentMethod === 'cash' && x.createdAt > since && x.status !== 'void')) {
+      const d = localDate(o.createdAt);
+      const r = byDay.get(d) || { at: o.createdAt, kind: 'sales', label: 'ขายเงินสด', note: '', user: '', amount: 0, bills: 0 };
+      r.at = o.createdAt > r.at ? o.createdAt : r.at;
+      r.amount = round2(r.amount + o.total);
+      r.bills += 1;
+      r.note = `${d} · ${r.bills} บิล`;
+      byDay.set(d, r);
+    }
+    rows.push(...byDay.values());
+    for (const o of db.orders.filter((x) => x.paymentMethod === 'cash' && x.createdAt <= since && x.status === 'void' && x.voidedAt > since)) {
+      rows.push({ at: o.voidedAt, kind: 'void', label: 'คืนเงินบิลที่ยกเลิก', note: `บิล ${o.orderNo}`, user: o.voidedBy, amount: -o.total });
+    }
+  }
+  rows.sort((a, b) => b.at.localeCompare(a.at));
+  return { drawer, rows: rows.slice(0, 200) };
+}));
+app.post('/api/cash', need('expenses'), h((req, res) => {
+  const b = req.body || {};
+  if (!CASH_TYPES[b.type]) fail(400, 'ประเภทไม่ถูกต้อง');
+  const amount = num(b.amount);
+  if (b.type !== 'set' && !amount) fail(400, 'กรุณากรอกจำนวนเงิน');
+  const db = getDb();
+  if (!db.cashMoves) db.cashMoves = [];
+  const before = cashDrawer(db);
+  const m = { id: uid(), type: b.type, amount, note: str(b.note, 120), userId: req.user.id, userName: req.user.name, createdAt: now() };
+  db.cashMoves.push(m);
+  save();
+  const after = cashDrawer(db);
+  res.locals.audit = `${CASH_TYPES[m.type]} ${amount} บาท${m.note ? ` (${m.note})` : ''} · คงเหลือ ${before ? before.balance : '-'} → ${after.balance}`;
+  return after;
 }));
 
 // ---------- capital (owner money put into the shop) ----------
@@ -824,6 +877,9 @@ function addPoints(customer, points, type, { order, user, note = '' } = {}) {
 const priceItems = (items) => {
   const db = getDb();
   if (!Array.isArray(items) || !items.length) fail(400, 'ยังไม่มีรายการสินค้า');
+  for (const i of items) {
+    if (i.customDiscount && Number(i.customDiscount.value) > 0 && !cleanCustomDiscount(i.customDiscount)) fail(400, 'กรุณาระบุว่าส่วนลดนี้คือส่วนลดอะไร');
+  }
   try {
     return items.map((i) => priceLine(i, { ...db, loyalty: db.settings.loyalty }));
   } catch (e) {
@@ -832,12 +888,32 @@ const priceItems = (items) => {
 };
 
 /**
+ * Coffee menus need exactly one roast among the roasts currently on sale.
+ * Counter sales accept a roast switched on for either the counter or outside; the QR menu only outside ones.
+ */
+function checkRoast(items, { outside = false } = {}) {
+  const db = getDb();
+  const onSale = db.toppings.filter((t) => (outside ? t.activeOutside !== false : t.active || t.activeOutside !== false));
+  for (const i of items || []) {
+    const m = db.menuItems.find((x) => x.id === i.menuItemId);
+    const choices = roastChoices(m, db.categories, onSale);
+    if (!choices.length) continue;
+    const picked = (i.toppingIds || []).filter((id) => choices.some((t) => t.id === id));
+    if (picked.length !== 1) fail(400, `กรุณาเลือกระดับการคั่วของ “${m.name}” 1 อย่าง`);
+  }
+}
+
+/**
  * Create a paid order. `customer` is { type: 'old', id } | { type: 'new', name, phone, lineId };
  * `customerName` overrides the bill name without creating a customer record (used by queues).
  */
 function createOrder({ items, customer: cust, customerName, paymentMethod, cashReceived: cashIn, user, extra = {} }) {
   const db = getDb();
-  if (!['cash', 'transfer'].includes(paymentMethod)) fail(400, 'กรุณาเลือกวิธีชำระเงิน');
+  // Delivery app order (Grab / LINE MAN): paid through the app, no customer record or stamps.
+  const app = cust?.type === 'app' ? cust.app : null;
+  if (cust?.type === 'app' && !APPS[app]) fail(400, 'กรุณาเลือกแอพที่ขาย');
+  if (app) paymentMethod = 'app';
+  if (!['cash', 'transfer', ...(app ? ['app'] : [])].includes(paymentMethod)) fail(400, 'กรุณาเลือกวิธีชำระเงิน');
   const lines = priceItems(items);
   const s = summarize(lines);
 
@@ -850,7 +926,8 @@ function createOrder({ items, customer: cust, customerName, paymentMethod, cashR
   }
 
   let customer = null;
-  const customerType = cust?.type === 'old' ? 'old' : 'new';
+  const customerType = app ? 'app' : cust?.type === 'old' ? 'old' : 'new';
+  const appRef = app ? str(cust.ref, 40) : '';
   if (customerType === 'old' && cust?.id) {
     customer = db.customers.find((c) => c.id === cust.id) || null;
   } else if (customerType === 'new' && !customerName && str(cust?.name)) {
@@ -887,7 +964,8 @@ function createOrder({ items, customer: cust, customerName, paymentMethod, cashR
     status: 'paid',
     customerType,
     customerId: customer?.id || null,
-    customerName: customerName || customer?.name || 'ลูกค้าทั่วไป',
+    customerName: customerName || customer?.name || (app ? `${APPS[app]}${appRef ? ` #${appRef}` : ''}` : 'ลูกค้าทั่วไป'),
+    ...(app ? { channel: app, appRef } : {}),
     items: lines,
     ...s,
     paymentMethod,
@@ -912,6 +990,7 @@ function createOrder({ items, customer: cust, customerName, paymentMethod, cashR
 
 app.post('/api/orders', need('pos'), h((req) => {
   const b = req.body || {};
+  checkRoast(b.items);
   const order = createOrder({ items: b.items, customer: b.customer, paymentMethod: b.paymentMethod, cashReceived: b.cashReceived, user: req.user });
   save();
   return order;
@@ -955,7 +1034,8 @@ function createQueue({ name, note, items, customer, staffId, staffName, source =
     customer: customer?.type === 'old' && db.customers.some((c) => c.id === customer.id) ? { type: 'old', id: customer.id } : null,
     items: items.map((i) => ({
       menuItemId: i.menuItemId, sweetness: i.sweetness ?? null, toppingIds: i.toppingIds || [],
-      discountIds: i.discountIds || [], note: str(i.note, 200), qty: Math.max(1, Math.floor(Number(i.qty) || 1)),
+      discountIds: i.discountIds || [], customDiscount: cleanCustomDiscount(i.customDiscount),
+      note: str(i.note, 200), qty: Math.max(1, Math.floor(Number(i.qty) || 1)),
     })),
     lines,
     total: s.total,
@@ -971,6 +1051,7 @@ function createQueue({ name, note, items, customer, staffId, staffName, source =
 
 app.post('/api/queues', need('pos'), h((req) => {
   const b = req.body || {};
+  checkRoast(b.items);
   return createQueue({ name: b.name, note: b.note, items: b.items, customer: b.customer, staffId: req.user.id, staffName: req.user.name });
 }));
 

@@ -110,11 +110,12 @@ function buildSheet(orders, catalog, expenses, { showAll }) {
   const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
   const cash = sum(paid.filter((o) => o.paymentMethod === 'cash'), (o) => o.total);
   const transfer = sum(paid.filter((o) => o.paymentMethod === 'transfer'), (o) => o.total);
+  const app = sum(paid.filter((o) => o.paymentMethod === 'app'), (o) => o.total);
   const expenseTotal = sum(expenses, (e) => e.amount);
   return {
     variants, topCols, hasOtherTops, sections: sectionList,
     totals: { bills: paid.length, cups: sum(lines, (x) => x.l.qty), discount: sum(paid, (o) => o.discountTotal), amount: sum(paid, (o) => o.total) },
-    money: { cash, transfer, expenseTotal, cashLeft: cash - expenseTotal, total: cash + transfer, left: cash + transfer - expenseTotal },
+    money: { cash, transfer, app, expenseTotal, cashLeft: cash - expenseTotal, total: cash + transfer + app, left: cash + transfer + app - expenseTotal },
     discounts: [...discounts.entries()].sort((a, b) => b[1] - a[1]),
     freebies: [...freebies.values()].sort((a, b) => b.amount - a.amount),
     expenses: [...expByCat.entries()].sort((a, b) => b[1] - a[1]),
@@ -181,7 +182,7 @@ export default function SalesSheet({ range }) {
         rows.push(['', `รวม ${sec.name}`, ...s.variants.flatMap(() => ['', '']), ...s.topCols.map(() => ''), ...(s.hasOtherTops ? [''] : []), sec.discount, sec.amount]);
       }
       rows.push(['', 'ยอดรวม', `${s.totals.cups} แก้ว`, `${s.totals.bills} บิล`]);
-      rows.push(['เงินสด', s.money.cash], ['เงินโอน', s.money.transfer], ['ส่วนลดรวม', s.totals.discount]);
+      rows.push(['เงินสด', s.money.cash], ['เงินโอน', s.money.transfer], ...(s.money.app ? [['ขายในแอพ', s.money.app]] : []), ['ส่วนลดรวม', s.totals.discount]);
       s.discounts.forEach(([n, a]) => rows.push([`  ${n}`, a]));
       s.expenses.forEach(([n, a]) => rows.push([`ค่าใช้จ่าย: ${n}`, a]));
       rows.push(['คงเหลือ (เงินสด)', s.money.cashLeft], ['คงเหลือ (เงินโอน)', s.money.transfer], ['รวมคงเหลือ', s.money.left], []);
@@ -285,6 +286,7 @@ function Sheet({ page, shop }) {
           <div className="sheet-box">
             <div className="sheet-row"><span>เงินสด</span><b>{baht(s.money.cash)}</b></div>
             <div className="sheet-row"><span>เงินโอน</span><b>{baht(s.money.transfer)}</b></div>
+            {s.money.app > 0 && <div className="sheet-row"><span>ขายในแอพ (Grab / LINE MAN)</span><b>{baht(s.money.app)}</b></div>}
             <div className="sheet-row"><span>ส่วนลดรวม</span><span>{s.totals.discount ? `−${baht(s.totals.discount)}` : '–'}</span></div>
             {s.discounts.map(([n, a]) => <div key={n} className="sheet-row sheet-sub"><span>{n}</span><span>−{baht(a)}</span></div>)}
             {s.expenses.length > 0 && <div className="sheet-row"><span>ค่าใช้จ่าย</span><span>−{baht(s.money.expenseTotal)}</span></div>}

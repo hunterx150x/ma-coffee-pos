@@ -12,7 +12,9 @@ const pct = (a, b) => (b ? round2((a / b) * 100) : 0);
 const r2 = (n) => round2(n || 0);
 const LOYALTY = 'loyalty';
 
-const channel = (o) => (o.queueId ? (o.source === 'customer' ? 'QR ลูกค้าสั่งเอง' : 'คิว') : 'หน้าร้าน');
+const APP_LABEL = { grab: 'Grab', lineman: 'LINE MAN' };
+const channel = (o) => (o.channel ? APP_LABEL[o.channel] || o.channel : o.queueId ? (o.source === 'customer' ? 'QR ลูกค้าสั่งเอง' : 'คิว') : 'หน้าร้าน');
+const payName = (o) => (o.paymentMethod === 'cash' ? 'เงินสด' : o.paymentMethod === 'app' ? 'ชำระผ่านแอพ' : 'เงินโอน');
 const isGuest = (o) => !o.customerId && (!o.customerName || o.customerName === 'ลูกค้าทั่วไป');
 
 function bump(map, key, init) {
@@ -60,6 +62,7 @@ export function summaryRows(report, orders, shopName) {
     ['ยอดขายสุทธิ', t.sales],
     ['เงินสด', t.cash],
     ['เงินโอน', t.transfer],
+    ['ขายในแอพ (Grab / LINE MAN)', t.app || 0],
     ['ต้นทุนวัตถุดิบ', t.cost],
     ['กำไรขั้นต้น', t.grossProfit],
     ['% กำไรขั้นต้น', t.grossMargin],
@@ -86,6 +89,7 @@ export function summaryRows(report, orders, shopName) {
   rows.push(['วิธีชำระ', 'บิล', '', 'ยอดขายสุทธิ', '% ของยอดขาย']);
   rows.push(['เงินสด', t.cashCount, '', t.cash, pct(t.cash, t.sales)]);
   rows.push(['เงินโอน', t.transferCount, '', t.transfer, pct(t.transfer, t.sales)]);
+  if (t.appCount) rows.push(['ชำระผ่านแอพ', t.appCount, '', t.app, pct(t.app, t.sales)]);
 
   // ---- daily
   section('สรุปรายวัน');
@@ -293,7 +297,7 @@ export function detailRows(orders) {
     for (const l of o.items) {
       rows.push([
         dateStr(d), timeStr(d), WEEKDAYS[d.getDay()], d.getHours(), o.orderNo, o.status === 'void' ? 'ยกเลิก' : 'ชำระแล้ว', channel(o),
-        o.paymentMethod === 'cash' ? 'เงินสด' : 'เงินโอน', o.customerName, o.customerType === 'old' ? 'ลูกค้าเก่า' : 'ลูกค้าใหม่/ทั่วไป', o.customerId ? 'ใช่' : 'ไม่',
+        payName(o), o.customerName, o.customerType === 'old' ? 'ลูกค้าเก่า' : 'ลูกค้าใหม่/ทั่วไป', o.customerId ? 'ใช่' : 'ไม่',
         o.staffName, l.name, l.categoryName, l.qty, l.price, l.toppings.map((x) => x.name).join(' + '), r2(l.toppings.reduce((s, x) => s + x.price, 0)),
         l.unitPrice, l.sweetness != null ? `${l.sweetness}%` : '', l.gross, l.discounts.map((x) => `${x.name} (${x.amount})`).join(' + '), l.discountTotal,
         l.total, l.cost, r2(l.total - l.cost), l.rewardQty || 0, l.note || '', o.queueNo || '',

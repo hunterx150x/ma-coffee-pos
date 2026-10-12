@@ -49,6 +49,10 @@ export const thDateTime = (iso) => `${thDate(iso)} ${thTime(iso)}`;
 export const sweetLabel = (s) => (s == null ? '' : `หวาน ${s}%`);
 export const sweetDesc = (lv) => (lv === 0 ? 'ไม่หวาน' : lv <= 25 ? 'หวานน้อย' : lv <= 50 ? 'หวานกลาง' : lv <= 75 ? 'หวานมาก' : 'หวานปกติ');
 
+export const APP_NAMES = { grab: 'Grab', lineman: 'LINE MAN' };
+/** เงินสด / เงินโอน / Grab / LINE MAN */
+export const payLabel = (o) => (o.paymentMethod === 'cash' ? 'เงินสด' : o.paymentMethod === 'app' ? APP_NAMES[o.channel] || 'ขายในแอพ' : 'เงินโอน');
+
 export const discountLabel = (d) => {
   if (d.type === 'percent') return `ลด ${num(d.value)}%`;
   if (d.type === 'free') return d.maxValue > 0 ? `ฟรี 1 แก้ว (≤ ${baht(d.maxValue)})` : 'ฟรี 1 แก้ว';

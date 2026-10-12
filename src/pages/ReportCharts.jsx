@@ -284,6 +284,7 @@ export function ChartsGrid({ r, singleDay, catalog, prefs }) {
         <ShareChart type={type} slices={[
           { key: 'cash', label: 'เงินสด', value: t.cash, color: SERIES[0] },
           { key: 'transfer', label: 'เงินโอน', value: t.transfer, color: SERIES[1] },
+          ...(t.app ? [{ key: 'app', label: 'ขายในแอพ', value: t.app, color: SERIES[2] }] : []),
         ]} />
       </ChartCard>,
     );

@@ -59,6 +59,7 @@ const ROUTES = {
   'POST /api/queues/:id/status': ['คิว', 'เปลี่ยนสถานะคิว'],
   'POST /api/queues/:id/pay': ['คิว', 'ชำระเงินจากคิว'],
   'POST /api/ingredients/:id/adjust': ['สต๊อก', 'ปรับสต๊อก'],
+  'POST /api/cash': ['ค่าใช้จ่าย', 'เงินสดในร้าน'],
   'POST /api/customers/:id/points': ['ลูกค้า', 'ปรับแต้มสะสม', 'warn'],
   'PUT /api/settings': ['ตั้งค่า', 'แก้ไขตั้งค่าร้าน'],
   'POST /api/restore': ['ตั้งค่า', 'กู้คืนข้อมูลจากไฟล์สำรอง', 'warn'],
@@ -91,9 +92,10 @@ export function itemsText(lines = []) {
     return `${l.name} ×${l.qty}${extra.length ? ` [${extra.join(', ')}]` : ''} ฿${l.total}`;
   }).join(' · ');
 }
+const APP_NAMES = { grab: 'Grab', lineman: 'LINE MAN' };
 const pay = (o) => (o.paymentMethod === 'cash'
   ? `เงินสด${o.cashReceived != null ? ` รับ ${o.cashReceived} ทอน ${o.change ?? 0}` : ''}`
-  : 'โอน');
+  : o.paymentMethod === 'app' ? `ขายในแอพ ${APP_NAMES[o.channel] || ''}`.trim() : 'โอน');
 export const bill = (o) => [
   `บิล ${o.orderNo} ฿${o.total} (${pay(o)}) · ${o.cups} แก้ว · ${o.customerName}`,
   o.discountTotal ? `ส่วนลดรวม ${o.discountTotal}` : '',
@@ -136,7 +138,8 @@ export function auditMutations(req, res, next) {
 const SCALARS = { name: 'ชื่อ', price: 'ราคา', cost: 'ต้นทุน', costMode: 'วิธีคิดต้นทุน', active: 'ขายหน้าร้าน', activeOutside: 'ขายนอกสถานที่', sort: 'ลำดับ',
   icon: 'ไอคอน', type: 'รูปแบบ', value: 'มูลค่า', maxValue: 'สูงสุด', unit: 'หน่วย', costPerUnit: 'ต้นทุน/หน่วย', minQty: 'ขั้นต่ำ',
   amount: 'จำนวนเงิน', category: 'หมวด', description: 'รายละเอียด', date: 'วันที่', phone: 'เบอร์', lineId: 'LINE', note: 'หมายเหตุ',
-  source: 'ผู้ลงทุน', categoryId: 'ประเภท', role: 'บทบาท', username: 'ชื่อผู้ใช้' };
+  source: 'ผู้ลงทุน', categoryId: 'ประเภท', role: 'บทบาท', username: 'ชื่อผู้ใช้',
+  requireRoast: 'ต้องเลือกระดับคั่ว', isRoast: 'เป็นตัวเลือกระดับคั่ว', paidFromCash: 'จ่ายจากเงินสดในร้าน' };
 // Key-order-insensitive JSON, so a re-saved recipe {qty, ingredientId} vs {ingredientId, qty} isn't a "change".
 const stable = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 const same = (a, b) => stable(a) === stable(b);

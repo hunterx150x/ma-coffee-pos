@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { baht, presetRange, thDate, today } from '../utils.js';
-import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
+import { baht, presetRange, thDate, thDateTime, today } from '../utils.js';
+import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, Toggle, useAsync, useUi } from '../components/ui.jsx';
 import { EXPENSE_CATEGORIES, OTHER_EXPENSE, isIngredientPurchase } from '../../shared/expenses.js';
 
 const CATS = EXPENSE_CATEGORIES;
@@ -16,6 +16,8 @@ export default function Expenses() {
   const [range, setRange] = useState(presetRange('month'));
   const list = useAsync(() => api('/expenses-range', { query: range }), [range.from, range.to]);
   const cap = useAsync(() => api('/capital', { query: range }), [range.from, range.to]);
+  const cash = useAsync(() => api('/cash'), []);
+  const [cm, setCm] = useState(null); // cash drawer entry being added: { type, amount, note }
   const [f, setF] = useState(null); // expense being edited
   const [c, setC] = useState(null); // capital entry being edited
   const [err, setErr] = useState('');
@@ -25,7 +27,22 @@ export default function Expenses() {
   const capRange = cap.data?.range.capital || 0;
   const afterCapital = total - capRange;
   const all = cap.data?.allTime;
-  const reloadAll = () => { list.reload(); cap.reload(); };
+  const reloadAll = () => { list.reload(); cap.reload(); cash.reload(); };
+  const drawer = cash.data?.drawer;
+  const saveCash = async () => {
+    setErr('');
+    if (cm.type !== 'set' && !(Number(cm.amount) > 0)) return setErr('กรุณากรอกจำนวนเงิน');
+    if (cm.type === 'set' && cm.amount === '') return setErr('กรุณากรอกจำนวนเงินที่นับได้');
+    try {
+      await api('/cash', { method: 'POST', body: cm });
+      toast('บันทึกเงินสดในร้านแล้ว');
+      setCm(null);
+      cash.reload();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const newCash = (type) => { setErr(''); setCm({ type, amount: type === 'set' && drawer ? drawer.balance : '', note: '' }); };
 
   const save = async () => {
     setErr('');
@@ -68,7 +85,7 @@ export default function Expenses() {
     setC(null);
     cap.reload();
   };
-  const newExpense = () => { setErr(''); setF({ date: today(), category: CATS[0], otherText: '', description: '', amount: '' }); };
+  const newExpense = () => { setErr(''); setF({ date: today(), category: CATS[0], otherText: '', description: '', amount: '', paidFromCash: !!drawer }); };
   const newCapital = () => { setErr(''); setC({ date: today(), source: 'เจ้าของร้าน', note: '', amount: '' }); };
 
   return (
@@ -77,6 +94,8 @@ export default function Expenses() {
         <button className="btn btn-outline" onClick={newCapital}><Icon name="plus" /> เพิ่มเงินทุน</button>
         <button className="btn btn-primary" onClick={newExpense}><Icon name="plus" /> เพิ่มค่าใช้จ่าย</button>
       </PageHead>
+      <CashCard drawer={drawer} loading={cash.loading && !cash.data} onAdd={newCash} onOpen={() => setTab('cash')} />
+
       <div className="card filters"><DateRange value={range} onChange={setRange} /></div>
 
       <div className="kpis kpis-3">
@@ -99,7 +118,33 @@ export default function Expenses() {
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: 'expenses', label: 'ค่าใช้จ่าย', count: rows.length },
         { key: 'capital', label: 'เงินทุน', count: cap.data?.rows.length || 0 },
+        { key: 'cash', label: 'เงินสดในร้าน' },
       ]} />
+
+      {tab === 'cash' && (
+        <>
+          <p className="muted small">ยอดเงินสดคำนวณจากการนับเงินครั้งล่าสุด + ขายเงินสด − ค่าใช้จ่ายที่จ่ายจากเงินสดในร้าน ± นำเงินเข้า/ออก (ไม่ขึ้นกับช่วงวันที่ด้านบน) · ควรนับเงินจริงแล้วกด “นับเงิน / ตั้งยอด” เป็นประจำ เช่น ตอนปิดร้าน</p>
+          {cash.loading && !cash.data ? <Loading /> : cash.error ? <ErrorBox error={cash.error} onRetry={cash.reload} /> : cash.data.rows.length ? (
+            <div className="card table-card">
+              <table className="table">
+                <thead><tr><th>เวลา</th><th>รายการ</th><th className="hide-sm">โดย</th><th className="num">จำนวนเงิน</th></tr></thead>
+                <tbody>
+                  {cash.data.rows.map((r, i) => (
+                    <tr key={i} className={r.kind === 'set' ? 'cash-row-set' : ''}>
+                      <td className="nowrap small">{thDateTime(r.at)}</td>
+                      <td><b>{r.label}</b>{r.note && <div className="muted small">{r.note}</div>}</td>
+                      <td className="hide-sm muted small">{r.user || '—'}</td>
+                      <td className={`num ${r.kind === 'set' ? '' : r.amount >= 0 ? 'text-good' : 'text-bad'}`}>
+                        <b>{r.kind === 'set' ? `= ${baht(r.amount)}` : `${r.amount >= 0 ? '+' : '−'}${baht(Math.abs(r.amount))}`}</b>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <Empty icon="cash" title="ยังไม่ได้ตั้งยอดเงินสดในร้าน"><button className="btn btn-primary btn-sm" onClick={() => newCash('set')}>นับเงิน / ตั้งยอดเริ่มต้น</button></Empty>}
+        </>
+      )}
 
       {tab === 'expenses' && (
         <>
@@ -112,7 +157,7 @@ export default function Expenses() {
                   {rows.map((e) => (
                     <tr key={e.id} onClick={() => { setErr(''); setF(toForm(e)); }}>
                       <td className="nowrap">{thDate(e.date)}</td>
-                      <td>{e.description}<div className="muted small show-sm">{e.category}</div></td>
+                      <td>{e.description}{e.paidFromCash && <span className="badge badge-cash cash-flag">เงินสดร้าน</span>}<div className="muted small show-sm">{e.category}</div></td>
                       <td className="hide-sm"><span className={`badge ${isIngredientPurchase(e) ? 'badge-transfer' : ''}`}>{e.category}</span></td>
                       <td className="num"><b>{baht(e.amount)}</b></td>
                     </tr>
@@ -172,6 +217,8 @@ export default function Expenses() {
               )}
               {isIngredientPurchase(f) && <span className="field-hint">ไม่หักซ้ำในกำไร (คิดเป็นต้นทุนสินค้าตามสูตรแล้ว) แต่นับเป็นเงินที่จ่ายออก</span>}
             </Field>
+            <Toggle checked={!!f.paidFromCash} onChange={(v) => setF({ ...f, paidFromCash: v })}
+              label={drawer ? `จ่ายจากเงินสดในร้าน (หักจากยอด ${baht(drawer.balance)})` : 'จ่ายจากเงินสดในร้าน'} />
             {err && <div className="field-error">{err}</div>}
           </div>
         )}
@@ -200,6 +247,68 @@ export default function Expenses() {
           </div>
         )}
       </Modal>
+      <Modal open={!!cm} title={cm ? CASH_TITLES[cm.type] : ''} size="sm" onClose={() => setCm(null)}
+        footer={(
+          <>
+            <button className="btn btn-ghost" onClick={() => setCm(null)}>ยกเลิก</button>
+            <button className="btn btn-primary" onClick={saveCash}>บันทึก</button>
+          </>
+        )}>
+        {cm && (
+          <div className="form">
+            {cm.type === 'set' && <p className="muted small">นับเงินสดที่มีอยู่จริงในร้านแล้วกรอกยอด — ยอดนี้จะเป็นจุดเริ่มต้นใหม่{drawer ? ` (ระบบคำนวณได้ ${baht(drawer.balance)})` : ''}</p>}
+            <Field label={cm.type === 'set' ? 'เงินสดที่นับได้ (บาท) *' : 'จำนวนเงิน (บาท) *'}>
+              <NumberInput value={cm.amount} onChange={(v) => setCm({ ...cm, amount: v })} autoFocus />
+            </Field>
+            {cm.type === 'set' && drawer && cm.amount !== '' && Number(cm.amount) !== drawer.balance && (
+              <div className={`cash-diff ${Number(cm.amount) > drawer.balance ? 'text-good' : 'text-bad'}`}>
+                {Number(cm.amount) > drawer.balance ? 'เงินเกิน' : 'เงินขาด'} {baht(Math.abs(Number(cm.amount) - drawer.balance))} จากที่ระบบคำนวณ
+              </div>
+            )}
+            <Field label="หมายเหตุ">
+              <input className="input" value={cm.note} maxLength={120} onChange={(e) => setCm({ ...cm, note: e.target.value })}
+                placeholder={cm.type === 'in' ? 'เช่น แลกเหรียญ / เติมเงินทอน' : cm.type === 'out' ? 'เช่น นำเงินเข้าธนาคาร' : 'เช่น นับตอนปิดร้าน'} />
+            </Field>
+            {err && <div className="field-error">{err}</div>}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+const CASH_TITLES = { set: 'นับเงิน / ตั้งยอดเงินสด', in: 'นำเงินเข้าลิ้นชัก', out: 'นำเงินออกจากลิ้นชัก' };
+
+/** Cash in the shop right now, with quick actions. */
+function CashCard({ drawer, loading, onAdd, onOpen }) {
+  if (loading) return null;
+  return (
+    <div className="card cash-card">
+      <div className="cash-main">
+        <span className="cash-icon"><Icon name="cash" size={22} /></span>
+        <div>
+          <div className="muted small">เงินสดคงเหลือในร้านตอนนี้</div>
+          {drawer ? (
+            <>
+              <div className="cash-balance">{baht(drawer.balance)}</div>
+              <div className="muted small">
+                นับล่าสุด {thDateTime(drawer.since)} = {baht(drawer.counted)}
+                {drawer.sales ? ` · ขายเงินสด +${baht(drawer.sales)}` : ''}
+                {drawer.expenses ? ` · ค่าใช้จ่าย −${baht(drawer.expenses)}` : ''}
+                {drawer.cashIn ? ` · นำเข้า +${baht(drawer.cashIn)}` : ''}
+                {drawer.cashOut ? ` · นำออก −${baht(drawer.cashOut)}` : ''}
+                {drawer.refunds ? ` · คืนเงิน −${baht(drawer.refunds)}` : ''}
+              </div>
+            </>
+          ) : <div className="muted">ยังไม่ได้ตั้งยอด — นับเงินในลิ้นชักแล้วกด “นับเงิน / ตั้งยอด”</div>}
+        </div>
+      </div>
+      <div className="cash-actions">
+        <button className="btn btn-sm btn-primary" onClick={() => onAdd('set')}>นับเงิน / ตั้งยอด</button>
+        {drawer && <button className="btn btn-sm btn-outline" onClick={() => onAdd('in')}><Icon name="plus" size={16} /> นำเงินเข้า</button>}
+        {drawer && <button className="btn btn-sm btn-outline" onClick={() => onAdd('out')}><Icon name="minus" size={16} /> นำเงินออก</button>}
+        {drawer && <button className="btn btn-sm btn-ghost" onClick={onOpen}>ดูความเคลื่อนไหว</button>}
+      </div>
     </div>
   );
 }

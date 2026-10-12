@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
-import { baht, presetRange, thDateTime, thTime } from '../utils.js';
+import { baht, payLabel, presetRange, thDateTime, thTime } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Icon, Loading, Modal, PageHead, Tabs, useAsync, useUi, Field } from '../components/ui.jsx';
 import Receipt, { printReceipt } from '../components/Receipt.jsx';
 
@@ -45,7 +45,7 @@ export default function Orders() {
             <input className="input" placeholder="ค้นหาเลขบิล / ชื่อลูกค้า" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <Tabs value={method} onChange={setMethod} tabs={[
-            { key: '', label: 'ทั้งหมด' }, { key: 'cash', label: 'เงินสด' }, { key: 'transfer', label: 'เงินโอน' },
+            { key: '', label: 'ทั้งหมด' }, { key: 'cash', label: 'เงินสด' }, { key: 'transfer', label: 'เงินโอน' }, { key: 'app', label: 'ขายในแอพ' },
           ]} />
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function Orders() {
                   <td>{range.from === range.to ? thTime(o.createdAt) : thDateTime(o.createdAt)}</td>
                   <td className="hide-sm">{o.customerName}</td>
                   <td className="hide-sm muted">{o.items.map((l) => `${l.qty}×${l.name}`).join(', ')}</td>
-                  <td><span className={`badge ${o.paymentMethod === 'cash' ? 'badge-cash' : 'badge-transfer'}`}>{o.paymentMethod === 'cash' ? 'เงินสด' : 'โอน'}</span></td>
+                  <td><span className={`badge ${o.paymentMethod === 'cash' ? 'badge-cash' : o.paymentMethod === 'app' ? `app-badge app-${o.channel}` : 'badge-transfer'}`}>{o.paymentMethod === 'transfer' ? 'โอน' : payLabel(o)}</span></td>
                   <td className="num"><b>{baht(o.total)}</b></td>
                 </tr>
               ))}

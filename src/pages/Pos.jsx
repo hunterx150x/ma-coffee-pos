@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import { priceLine, summarize, stampsEarned, rewardsAvailable } from '../../shared/pricing.js';
-import { baht, discountLabel, sweetLabel, sweetDesc, initial } from '../utils.js';
-import { Icon, Modal, Field, Loading, ErrorBox, Empty, useAsync, useUi } from '../components/ui.jsx';
+import { priceLine, summarize, stampsEarned, rewardsAvailable, roastChoices, cleanCustomDiscount } from '../../shared/pricing.js';
+import { baht, discountLabel, sweetLabel, sweetDesc, initial, APP_NAMES, payLabel } from '../utils.js';
+import { Icon, Modal, Field, Loading, ErrorBox, Empty, NumberInput, useAsync, useUi } from '../components/ui.jsx';
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
 import PaymentModal from '../components/PaymentModal.jsx';
 import HowToModal from '../components/HowTo.jsx';
@@ -13,7 +13,9 @@ const STEPS = ['ลูกค้า', 'ประเภท', 'เมนู', 'ค�
 const CART_KEY = 'ma_pos_cart';
 const SELL_MODE_KEY = 'ma_pos_sell_mode';
 
-const emptyDraft = () => ({ categoryId: null, menuItemId: null, sweetness: null, toppingIds: [], discountIds: [], note: '', qty: 1, rewardQty: 0, editIndex: null });
+const emptyDraft = () => ({ categoryId: null, menuItemId: null, sweetness: null, toppingIds: [], discountIds: [], customDiscount: null, note: '', qty: 1, rewardQty: 0, editIndex: null });
+const emptyCustom = () => ({ name: '', type: 'percent', value: '' });
+// type: new | old | app (delivery app order: app = grab | lineman, ref = the app's order number)
 const emptyCustomer = () => ({ type: null, id: null, name: '', phone: '', lineId: '' });
 
 function loadSaved() {
@@ -46,6 +48,7 @@ export default function Pos({ go }) {
   const [howToLine, setHowToLine] = useState(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [doneQueue, setDoneQueue] = useState(null);
+  const [appBusy, setAppBusy] = useState(false);
 
   useEffect(() => {
     try {
@@ -95,6 +98,16 @@ export default function Pos({ go }) {
   // Stamp card: free cups still available for this draft = earned rewards − rewards already used by other cart lines.
   const loyalty = catalog.settings.loyalty;
   const draftItem = draft.menuItemId && catalog.menuItems.find((m) => m.id === draft.menuItemId);
+  // Coffee: one roast is required (roasts switched off for this sell mode show as sold out); others never see roasts.
+  const roastAll = roastChoices(draftItem, catalog.categories, catalog.toppings);
+  const roasts = roastAll.filter((t) => catalog.activeToppings.includes(t));
+  const roastId = draft.toppingIds.find((id) => roasts.some((t) => t.id === id));
+  const needRoast = roasts.length > 0 && !roastId;
+  const extraToppings = catalog.activeToppings.filter((t) => !t.isRoast);
+  // Custom discount typed at step 6: a value without a name can't be added.
+  const cd = draft.customDiscount;
+  const customMissingName = !!cd && Number(cd.value) > 0 && !cd.name.trim();
+  const isApp = customer.type === 'app';
   const rewardExcluded = !draftItem || (loyalty?.excludeCategoryIds || []).includes(draftItem.categoryId);
   const rewardUsedElsewhere = cart.reduce((s, c, i) => s + (i === draft.editIndex ? 0 : c.rewardQty || 0), 0);
   const rewardRoom = customer.type === 'old' && loyalty?.enabled && !rewardExcluded
@@ -107,8 +120,11 @@ export default function Pos({ go }) {
 
   const commitDraft = () => {
     const entry = {
-      menuItemId: draft.menuItemId, sweetness: draft.sweetness, toppingIds: draft.toppingIds,
-      discountIds: draft.discountIds, note: draft.note.trim(), qty: draft.qty, rewardQty: Math.min(draft.rewardQty || 0, draft.qty),
+      menuItemId: draft.menuItemId, sweetness: draft.sweetness,
+      // a roast left over from another menu (e.g. switched coffee -> tea while editing) is dropped
+      toppingIds: draft.toppingIds.filter((id) => roastAll.length || !catalog.toppings.find((t) => t.id === id)?.isRoast),
+      discountIds: draft.discountIds, customDiscount: cleanCustomDiscount(draft.customDiscount),
+      note: draft.note.trim(), qty: draft.qty, rewardQty: Math.min(draft.rewardQty || 0, draft.qty),
     };
     if (draft.editIndex != null) {
       setCart((c) => c.map((x, i) => (i === draft.editIndex ? entry : x)));
@@ -150,7 +166,9 @@ export default function Pos({ go }) {
     const body = {
       customer: customer.type === 'old'
         ? { type: 'old', id: customer.id }
-        : { type: 'new', name: customer.name, phone: customer.phone, lineId: customer.lineId },
+        : customer.type === 'app'
+          ? { type: 'app', app: customer.app, ref: customer.ref }
+          : { type: 'new', name: customer.name, phone: customer.phone, lineId: customer.lineId },
       items: cart,
       paymentMethod: method,
       cashReceived: method === 'cash' ? cashReceived : undefined,
@@ -159,6 +177,17 @@ export default function Pos({ go }) {
     setPayOpen(false);
     setDoneOrder(order);
     resetAll();
+  };
+
+  const recordAppOrder = async () => {
+    setAppBusy(true);
+    try {
+      await pay({ method: 'app' });
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setAppBusy(false);
+    }
   };
 
   // Sell now, pay later: park the bill in the queue (customer name is not saved as a customer record).
@@ -192,7 +221,7 @@ export default function Pos({ go }) {
             </div>
             {customer.type && (
               <span className="pill pill-customer">
-                <Icon name="user" size={14} /> {customer.type === 'old' ? customer.name : (customer.name || 'ลูกค้าใหม่')}
+                <Icon name="user" size={14} /> {customer.type === 'app' ? `${APP_NAMES[customer.app]}${customer.ref ? ` #${customer.ref}` : ''}` : customer.type === 'old' ? customer.name : (customer.name || 'ลูกค้าใหม่')}
                 {customer.type === 'old' && customer.id && loyalty?.enabled && <span className="pill-stamps">☕ {customer.points || 0}</span>}
               </span>
             )}
@@ -282,9 +311,29 @@ export default function Pos({ go }) {
 
         {step === 5 && (
           <section>
+            {roastAll.length > 0 && (
+              <>
+                <h2 className="step-title">เลือกระดับการคั่ว <span className="req-badge">ต้องเลือก 1</span></h2>
+                <div className="grid grid-items roast-grid">
+                  {roastAll.map((t) => {
+                    const on = roastId === t.id;
+                    const out = !roasts.includes(t);
+                    return (
+                      <button key={t.id} className={`tile tile-check ${on ? 'selected' : ''} ${out ? 'tile-out' : ''}`} disabled={out}
+                        onClick={() => setDraft((d) => ({ ...d, toppingIds: [...d.toppingIds.filter((x) => !roastAll.some((r) => r.id === x)), t.id] }))}>
+                        <span className="check-box check-radio">{on && <Icon name="check" size={16} stroke={3} />}</span>
+                        <span className="tile-name">{t.name}</span>
+                        <span className="tile-price">{out ? 'หมด' : t.price ? `+${baht(t.price)}` : ''}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!roasts.length && <p className="muted small">เมล็ดทุกระดับคั่วปิดอยู่ — ขายต่อได้โดยไม่ต้องเลือก</p>}
+              </>
+            )}
             <h2 className="step-title">เลือกท็อปปิ้ง <span className="muted small">(เลือกได้หลายอย่าง)</span></h2>
             <div className="grid grid-items">
-              {catalog.activeToppings.map((t) => {
+              {extraToppings.map((t) => {
                 const on = draft.toppingIds.includes(t.id);
                 return (
                   <button key={t.id} className={`tile tile-check ${on ? 'selected' : ''}`}
@@ -301,8 +350,12 @@ export default function Pos({ go }) {
                 onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} />
             </Field>
             <div className="step-actions">
-              <button className="btn btn-primary btn-lg" onClick={() => setStep(6)}>
-                {draft.toppingIds.length ? `ถัดไป (${draft.toppingIds.length} ท็อปปิ้ง)` : 'ไม่ใส่ท็อปปิ้ง / ถัดไป'} <Icon name="next" />
+              {needRoast && <span className="field-error">กรุณาเลือกระดับการคั่วก่อน</span>}
+              <button className="btn btn-primary btn-lg" disabled={needRoast} onClick={() => setStep(6)}>
+                {(() => {
+                  const n = draft.toppingIds.filter((id) => !roastAll.some((r) => r.id === id)).length;
+                  return n ? `ถัดไป (${n} ท็อปปิ้ง)` : 'ไม่ใส่ท็อปปิ้ง / ถัดไป';
+                })()} <Icon name="next" />
               </button>
             </div>
           </section>
@@ -336,7 +389,8 @@ export default function Pos({ go }) {
             ) : customer.type === 'old' && loyalty?.enabled && !rewardExcluded && (
               <p className="muted small">☕ {customer.name} มี {customer.points || 0} แต้ม — ครบ {loyalty.cupsPerReward} แก้วแลกฟรีได้</p>
             )}
-            {!catalog.activeDiscounts.length && <p className="muted">ยังไม่มีส่วนลดที่เปิดใช้งาน</p>}
+            <CustomDiscount value={draft.customDiscount} missingName={customMissingName}
+              onChange={(v) => setDraft((d) => ({ ...d, customDiscount: v }))} />
 
             <div className="card draft-summary">
               <div className="qty-row">
@@ -350,7 +404,7 @@ export default function Pos({ go }) {
               <div className="sum-row sum-total"><span>รวมรายการนี้</span><span>{baht(draftLine.total)}</span></div>
             </div>
             <div className="step-actions">
-              <button className="btn btn-primary btn-lg" onClick={commitDraft}>
+              <button className="btn btn-primary btn-lg" onClick={commitDraft} disabled={customMissingName}>
                 <Icon name={draft.editIndex != null ? 'check' : 'plus'} /> {draft.editIndex != null ? 'บันทึกการแก้ไข' : 'เพิ่มลงรายการ'}
               </button>
             </div>
@@ -373,8 +427,13 @@ export default function Pos({ go }) {
             <StampSummary customer={customer} loyalty={loyalty} lines={lines} />
             <div className="step-actions step-actions-split">
               <button className="btn btn-outline btn-lg" onClick={startNewItem}><Icon name="plus" /> เพิ่มเมนู</button>
+              {!isApp && (
+                <button className="btn btn-outline btn-lg btn-queue" disabled={!lines.length} onClick={() => setQueueOpen(true)}>
+                  <Icon name="queue" /> เพิ่มเข้าคิว
+                </button>
+              )}
               <button className="btn btn-primary btn-lg" disabled={!lines.length} onClick={() => setCheckoutOpen(true)}>
-                ไปหน้าชำระเงิน <Icon name="next" />
+                {isApp ? 'ไปหน้าบันทึกออเดอร์' : 'ไปหน้าชำระเงิน'} <Icon name="next" />
               </button>
             </div>
           </section>
@@ -384,18 +443,32 @@ export default function Pos({ go }) {
           <section>
             <h2 className="step-title">ชำระเงิน</h2>
             <div className="card">
-              <div className="sum-row"><span className="muted">ลูกค้า</span>
-                <b>{customer.type === 'old' ? customer.name : (customer.name || 'ลูกค้าทั่วไป')} {customer.type === 'new' && <span className="badge">ใหม่</span>}</b>
-              </div>
+              {isApp ? (
+                <div className="sum-row"><span className="muted">ขายในแอพ</span>
+                  <b><span className={`app-badge app-${customer.app}`}>{APP_NAMES[customer.app]}</span>{customer.ref ? ` #${customer.ref}` : ''}</b>
+                </div>
+              ) : (
+                <div className="sum-row"><span className="muted">ลูกค้า</span>
+                  <b>{customer.type === 'old' ? customer.name : (customer.name || 'ลูกค้าทั่วไป')} {customer.type === 'new' && <span className="badge">ใหม่</span>}</b>
+                </div>
+              )}
               {customer.phone && <div className="sum-row"><span className="muted">เบอร์โทร</span><span>{customer.phone}</span></div>}
             </div>
             <CartList lines={lines} readOnly onHowTo={setHowToLine} />
             <Totals totals={totals} />
             <StampSummary customer={customer} loyalty={loyalty} lines={lines} />
             <div className="due">
-              <span>ยอดที่ลูกค้าต้องชำระ</span>
+              <span>{isApp ? `ยอดขายใน ${APP_NAMES[customer.app]} (ชำระผ่านแอพ)` : 'ยอดที่ลูกค้าต้องชำระ'}</span>
               <b>{baht(totals.total)}</b>
             </div>
+            {isApp ? (
+              <div className="step-actions step-actions-split">
+                <button className="btn btn-outline btn-lg" onClick={() => setStep(7)}><Icon name="edit" /> แก้ไขรายการ</button>
+                <button className="btn btn-success btn-lg" disabled={!lines.length || appBusy} onClick={recordAppOrder}>
+                  <Icon name="check" /> {appBusy ? 'กำลังบันทึก...' : `บันทึกออเดอร์ ${APP_NAMES[customer.app]}`}
+                </button>
+              </div>
+            ) : (
             <div className="step-actions step-actions-split">
               <button className="btn btn-outline btn-lg" onClick={() => setStep(7)}><Icon name="edit" /> แก้ไขรายการ</button>
               <button className="btn btn-outline btn-lg btn-queue" disabled={!lines.length} onClick={() => setQueueOpen(true)}>
@@ -405,6 +478,7 @@ export default function Pos({ go }) {
                 <Icon name="check" /> ยืนยันการชำระเงิน
               </button>
             </div>
+            )}
           </section>
         )}
       </div>
@@ -434,7 +508,7 @@ export default function Pos({ go }) {
         footer={(
           <>
             <button className="btn btn-ghost" onClick={() => setCheckoutOpen(false)}>กลับไปแก้ไข</button>
-            <button className="btn btn-primary" onClick={() => { setCheckoutOpen(false); setStep(8); }}>ยืนยัน ไปหน้าชำระเงิน</button>
+            <button className="btn btn-primary" onClick={() => { setCheckoutOpen(false); setStep(8); }}>{isApp ? 'ยืนยัน ไปหน้าบันทึกออเดอร์' : 'ยืนยัน ไปหน้าชำระเงิน'}</button>
           </>
         )}>
         <CartList lines={lines} readOnly compact />
@@ -465,7 +539,7 @@ export default function Pos({ go }) {
         )}
       </Modal>
 
-      <Modal open={!!doneOrder} title="ชำระเงินสำเร็จ" onClose={() => setDoneOrder(null)}
+      <Modal open={!!doneOrder} title={doneOrder?.paymentMethod === 'app' ? 'บันทึกออเดอร์แล้ว' : 'ชำระเงินสำเร็จ'} onClose={() => setDoneOrder(null)}
         footer={(
           <>
             <button className="btn btn-outline" onClick={printReceipt}><Icon name="print" /> พิมพ์ใบเสร็จ</button>
@@ -477,7 +551,7 @@ export default function Pos({ go }) {
             <div className="success-banner">
               <span className="success-icon"><Icon name="check" size={28} stroke={3} /></span>
               <div>
-                <div className="muted">{doneOrder.paymentMethod === 'cash' ? 'เงินสด' : 'เงินโอน'} · บิล {doneOrder.orderNo}</div>
+                <div className="muted">{payLabel(doneOrder)}{doneOrder.appRef ? ` #${doneOrder.appRef}` : ''} · บิล {doneOrder.orderNo}</div>
                 <div className="success-amount">{baht(doneOrder.total)}</div>
                 {doneOrder.paymentMethod === 'cash' && doneOrder.change > 0 && (
                   <div className="change">เงินทอน <b>{baht(doneOrder.change)}</b></div>
@@ -514,12 +588,13 @@ function Stepper({ step }) {
 
 function StepCustomer({ customer, setCustomer, onNext, loyalty }) {
   const [q, setQ] = useState('');
+  const [appOpen, setAppOpen] = useState(false);
   const list = useAsync(() => (customer.type === 'old' ? api('/customers', { query: { q } }) : Promise.resolve([])), [customer.type, q]);
 
   return (
     <section>
-      <h2 className="step-title">ลูกค้าใหม่ หรือ ลูกค้าเก่า?</h2>
-      <div className="grid grid-2">
+      <h2 className="step-title">ลูกค้าใหม่ ลูกค้าเก่า หรือขายในแอพ?</h2>
+      <div className="grid grid-3 grid-customer">
         <button className={`tile tile-big ${customer.type === 'new' ? 'selected' : ''}`}
           onClick={() => setCustomer({ type: 'new', id: null, name: '', phone: '', lineId: '' })}>
           <Icon name="userPlus" size={36} />
@@ -532,7 +607,14 @@ function StepCustomer({ customer, setCustomer, onNext, loyalty }) {
           <span className="tile-name">ลูกค้าเก่า</span>
           <span className="muted small">ค้นหาจากชื่อ / เบอร์โทร</span>
         </button>
+        <button className={`tile tile-big ${customer.type === 'app' ? 'selected' : ''}`} onClick={() => setAppOpen(true)}>
+          <Icon name="queue" size={36} />
+          <span className="tile-name">ขายในแอพ</span>
+          <span className="muted small">{customer.type === 'app' ? `${APP_NAMES[customer.app]}${customer.ref ? ` #${customer.ref}` : ''}` : 'Grab / LINE MAN'}</span>
+        </button>
       </div>
+      <AppPicker open={appOpen} current={customer.type === 'app' ? customer : null} onClose={() => setAppOpen(false)}
+        onPick={(app, ref) => { setAppOpen(false); setCustomer({ ...emptyCustomer(), type: 'app', app, ref, name: APP_NAMES[app] }); onNext(); }} />
 
       {customer.type === 'new' && (
         <div className="card form">
@@ -692,3 +774,70 @@ function StampSummary({ customer, loyalty, lines }) {
   );
 }
 
+
+/** Step 1 "ขายในแอพ": which delivery app, plus its order number (optional). */
+function AppPicker({ open, current, onClose, onPick }) {
+  const [app, setApp] = useState(null);
+  const [ref, setRef] = useState('');
+  useEffect(() => {
+    if (open) { setApp(current?.app || null); setRef(current?.ref || ''); }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Modal open={open} title="ขายในแอพ" size="sm" onClose={onClose}
+      footer={(
+        <>
+          <button className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+          <button className="btn btn-primary" disabled={!app} onClick={() => onPick(app, ref.trim())}>ถัดไป <Icon name="next" /></button>
+        </>
+      )}>
+      <p className="muted small">เลือกแอพที่ลูกค้าสั่งเข้ามา — ออเดอร์นี้ชำระผ่านแอพ ไม่นับเป็นเงินสดหรือเงินโอนของร้าน</p>
+      <div className="grid grid-2">
+        {Object.entries(APP_NAMES).map(([k, label]) => (
+          <button key={k} className={`tile tile-big tile-app app-${k} ${app === k ? 'selected' : ''}`} onClick={() => setApp(k)}>
+            <span className="app-logo">{k === 'grab' ? 'G' : 'L'}</span>
+            <span className="tile-name">{label}</span>
+          </button>
+        ))}
+      </div>
+      <Field label="เลขออเดอร์ในแอพ (ถ้ามี)">
+        <input className="input" value={ref} maxLength={40} onChange={(e) => setRef(e.target.value)} placeholder={app === 'lineman' ? 'เช่น LM-1234' : 'เช่น GF-1234'}
+          onKeyDown={(e) => e.key === 'Enter' && app && onPick(app, ref.trim())} />
+      </Field>
+    </Modal>
+  );
+}
+
+/** Step 6: a one-off discount typed in by staff — % or baht per cup, with what it is for. */
+function CustomDiscount({ value, missingName, onChange }) {
+  const v = value || emptyCustom();
+  const open = !!value;
+  const set = (patch) => onChange({ ...v, ...patch });
+  if (!open) {
+    return (
+      <button className="btn btn-outline custom-disc-add" onClick={() => onChange(emptyCustom())}>
+        <Icon name="tag" size={18} /> ส่วนลดกำหนดเอง
+      </button>
+    );
+  }
+  return (
+    <div className="card custom-disc">
+      <div className="custom-disc-head">
+        <b><Icon name="tag" size={16} /> ส่วนลดกำหนดเอง</b>
+        <button className="btn btn-sm btn-ghost btn-danger-text" onClick={() => onChange(null)}><Icon name="x" size={16} /> ไม่ใช้</button>
+      </div>
+      <div className="custom-disc-row">
+        <div className="type-switch" role="group" aria-label="รูปแบบส่วนลด">
+          <button className={v.type === 'percent' ? 'active' : ''} onClick={() => set({ type: 'percent' })}>ลดเป็น %</button>
+          <button className={v.type === 'amount' ? 'active' : ''} onClick={() => set({ type: 'amount' })}>ลดเป็นบาท</button>
+        </div>
+        <div className="custom-disc-value">
+          <NumberInput value={v.value} onChange={(x) => set({ value: v.type === 'percent' && Number(x) > 100 ? 100 : x })} placeholder="0" aria-label="จำนวนส่วนลด" />
+          <span className="muted">{v.type === 'percent' ? '%' : 'บาท / แก้ว'}</span>
+        </div>
+      </div>
+      <Field label="ส่วนลดนี้คือส่วนลดอะไร *" error={missingName ? 'กรุณาระบุว่าเป็นส่วนลดอะไร' : ''}>
+        <input className="input" value={v.name} maxLength={60} onChange={(e) => set({ name: e.target.value })} placeholder="เช่น ลูกค้าประจำ, ชดเชยรอนาน, โปรเปิดร้าน" />
+      </Field>
+    </div>
+  );
+}

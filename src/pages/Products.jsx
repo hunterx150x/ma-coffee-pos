@@ -330,7 +330,7 @@ function Categories({ onChange }) {
             <button className="cat-open" onClick={() => crud.open(c)}>
               <span className="tile-emoji">{c.icon}</span>
               <span className="tile-name">{c.name}</span>
-              <span className="muted small">ลำดับ {c.sort}</span>
+              <span className="muted small">ลำดับ {c.sort}{c.requireRoast ? ' · ต้องเลือกคั่ว' : ''}</span>
             </button>
             <div className="cat-switches">
               <Toggle checked={c.active} onChange={(v) => crud.toggleActive(c, v)} label="หน้าร้าน" />
@@ -355,6 +355,7 @@ function Categories({ onChange }) {
             <div className="toggle-list">
               <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
               <Toggle checked={f.activeOutside !== false} onChange={(v) => setF({ ...f, activeOutside: v })} label="ขายนอกสถานที่ / ลูกค้าสแกน QR สั่งเอง" />
+              <Toggle checked={!!f.requireRoast} onChange={(v) => setF({ ...f, requireRoast: v })} label="ต้องเลือกระดับการคั่วเมล็ดกาแฟ (เช่น หมวดกาแฟ)" />
             </div>
           </>
         )}
@@ -387,7 +388,7 @@ function Toppings({ ings }) {
                 const cost = costOf(t, ings);
                 return (
                   <tr key={t.id} onClick={() => crud.open(t)} className={t.active || t.activeOutside !== false ? '' : 'row-dim'}>
-                    <td><b>{t.name}</b></td>
+                    <td><b>{t.name}</b>{t.isRoast && <span className="badge badge-roast">ระดับคั่ว</span>}</td>
                     <td className="num">+{baht(t.price)}</td>
                     <td className="num">{baht(cost)}</td>
                     <td className="num hide-sm"><Margin price={t.price} cost={cost} /></td>
@@ -412,6 +413,7 @@ function Toppings({ ings }) {
             <div className="toggle-list">
               <Toggle checked={f.active} onChange={(v) => setF({ ...f, active: v })} label="ขายหน้าร้าน (หน้าขายของพนักงาน)" />
               <Toggle checked={f.activeOutside !== false} onChange={(v) => setF({ ...f, activeOutside: v })} label="ขายนอกสถานที่ / ลูกค้าสแกน QR สั่งเอง" />
+              <Toggle checked={!!f.isRoast} onChange={(v) => setF({ ...f, isRoast: v })} label="เป็นตัวเลือกระดับการคั่ว (ให้เมนูกาแฟเลือก 1 อย่าง) — ปิดขายเมื่อเมล็ดชนิดนี้หมด" />
             </div>
           </>
         )}

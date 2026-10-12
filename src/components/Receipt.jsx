@@ -1,4 +1,4 @@
-import { baht, thDateTime, sweetLabel } from '../utils.js';
+import { baht, payLabel, thDateTime, sweetLabel } from '../utils.js';
 
 export function LineDetail({ line, showPrice = true }) {
   return (
@@ -52,7 +52,7 @@ export default function Receipt({ order, settings }) {
         <div className="receipt-row"><span>รวม ({order.cups} แก้ว)</span><span>{baht(order.gross)}</span></div>
         {order.discountTotal > 0 && <div className="receipt-row"><span>ส่วนลด</span><span>−{baht(order.discountTotal)}</span></div>}
         <div className="receipt-row receipt-grand"><span>ยอดสุทธิ</span><span>{baht(order.total)}</span></div>
-        <div className="receipt-row"><span>ชำระโดย</span><span>{order.paymentMethod === 'cash' ? 'เงินสด' : 'เงินโอน'}</span></div>
+        <div className="receipt-row"><span>ชำระโดย</span><span>{order.paymentMethod === 'app' ? `${payLabel(order)}${order.appRef ? ` #${order.appRef}` : ''}` : payLabel(order)}</span></div>
         {order.paymentMethod === 'cash' && (
           <>
             <div className="receipt-row"><span>รับเงิน</span><span>{baht(order.cashReceived)}</span></div>

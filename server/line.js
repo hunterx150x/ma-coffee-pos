@@ -109,7 +109,7 @@ export function saleFlex(order, today, shopName) {
   });
   const paidBy = order.paymentMethod === 'cash'
     ? `เงินสด (รับ ${baht(order.cashReceived)} · ทอน ${baht(order.change)})`
-    : 'เงินโอน';
+    : order.paymentMethod === 'app' ? `ขายในแอพ ${{ grab: 'Grab', lineman: 'LINE MAN' }[order.channel] || ''}`.trim() : 'เงินโอน';
   const meta = [
     row('ขายโดย', order.staffName, { color: C.muted }, { color: C.ink }),
     ...(order.customerName && order.customerName !== 'ลูกค้าทั่วไป' ? [row('ลูกค้า', order.customerName, { color: C.muted }, { color: C.ink })] : []),
@@ -139,7 +139,7 @@ export function saleFlex(order, today, shopName) {
         type: 'box', layout: 'vertical', backgroundColor: C.bg, paddingAll: '14px', spacing: 'xs',
         contents: [
           row('ยอดขายวันนี้', baht(today.sales), { weight: 'bold' }, { color: C.brown, size: 'md' }),
-          t(`${today.orders} บิล · ${today.cups} แก้ว · เงินสด ${baht(today.cash)} · โอน ${baht(today.transfer)}`, { size: 'xs', color: C.muted }),
+          t(`${today.orders} บิล · ${today.cups} แก้ว · เงินสด ${baht(today.cash)} · โอน ${baht(today.transfer)}${today.app ? ` · แอพ ${baht(today.app)}` : ''}`, { size: 'xs', color: C.muted }),
         ],
       },
     },
@@ -218,6 +218,7 @@ export function summaryFlex(r, shopName) {
           row('จำนวนบิล / แก้ว', `${x.orders} / ${x.cups}`),
           row('เงินสด', baht(x.cash)),
           row('เงินโอน', baht(x.transfer)),
+          ...(x.app ? [row('ขายในแอพ (Grab / LINE MAN)', baht(x.app))] : []),
           row('ส่วนลด', `−${baht(x.discount)}`, { color: C.green }),
           sep(),
           row('ยอดขายสุทธิ', baht(x.sales), { weight: 'bold', margin: 'md' }),
@@ -226,6 +227,7 @@ export function summaryFlex(r, shopName) {
           ...(r.topItems.length ? [sep(), t('ขายดี', { size: 'xs', color: C.muted, margin: 'md' }),
             ...r.topItems.slice(0, 3).map((i, n) => row(`${n + 1}. ${i.name}`, `${i.qty} แก้ว`, { size: 'xs' }))] : []),
           ...(x.voidCount ? [t(`ยกเลิก ${x.voidCount} บิล (${baht(x.voidAmount)})`, { size: 'xs', color: C.red, margin: 'md' })] : []),
+          ...(r.cashDrawer ? [sep(), row('💵 เงินสดในร้านตอนนี้', baht(r.cashDrawer.balance), { weight: 'bold', margin: 'md' }, { color: C.brown })] : []),
         ],
       },
     },

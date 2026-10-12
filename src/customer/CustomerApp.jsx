@@ -1,7 +1,7 @@
 // Public, no-login pages for customers: /order (scan QR → order) and /order/q/:token (track my queue).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { priceLine, summarize } from '../../shared/pricing.js';
+import { priceLine, summarize, roastChoices } from '../../shared/pricing.js';
 import { baht, sweetLabel, sweetDesc, promptPayPayload } from '../utils.js';
 import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
 import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
@@ -272,11 +272,17 @@ function ItemSheet({ item, menu, onClose, onAdd }) {
   }, [item]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!item) return null;
   const unit = item.price + toppingIds.reduce((s, id) => s + (menu.toppings.find((t) => t.id === id)?.price || 0), 0);
+  // Coffee: pick exactly one roast; other menus never see the roast choices.
+  const roasts = roastChoices(item, menu.categories, menu.toppings);
+  const roastId = toppingIds.find((id) => roasts.some((t) => t.id === id));
+  const extras = menu.toppings.filter((t) => !t.isRoast);
+  const needRoast = roasts.length > 0 && !roastId;
   return (
     <Modal open title={item.name} onClose={onClose}
       footer={(
-        <button className="btn btn-primary btn-lg btn-block" onClick={() => onAdd({ menuItemId: item.id, sweetness, toppingIds, discountIds: [], note: note.trim(), qty })}>
-          เพิ่มลงตะกร้า · {baht(unit * qty)}
+        <button className="btn btn-primary btn-lg btn-block" disabled={needRoast}
+          onClick={() => onAdd({ menuItemId: item.id, sweetness, toppingIds: toppingIds.filter((id) => roasts.length || !menu.toppings.find((t) => t.id === id)?.isRoast), discountIds: [], note: note.trim(), qty })}>
+          {needRoast ? 'กรุณาเลือกระดับการคั่ว' : `เพิ่มลงตะกร้า · ${baht(unit * qty)}`}
         </button>
       )}>
       {item.imageUrl && <img className="cx-sheet-img" src={item.imageUrl} alt="" />}
@@ -295,11 +301,29 @@ function ItemSheet({ item, menu, onClose, onAdd }) {
           </div>
         </section>
       )}
-      {menu.toppings.length > 0 && (
+      {roasts.length > 0 && (
+        <section>
+          <h4 className="cx-h">ระดับการคั่วเมล็ดกาแฟ <span className="req-badge">ต้องเลือก 1</span></h4>
+          <div className="cx-opts">
+            {roasts.map((t) => {
+              const on = roastId === t.id;
+              return (
+                <label key={t.id} className={`perm-item ${on ? 'on' : ''}`}>
+                  <input type="radio" name="roast" checked={on} onChange={() => setToppingIds((x) => [...x.filter((y) => !roasts.some((r) => r.id === y)), t.id])} />
+                  <span className="check-box check-radio">{on && <Icon name="check" size={14} stroke={3} />}</span>
+                  <span className="cx-opt-name">{t.name}</span>
+                  <span className="muted">{t.price ? `+${baht(t.price)}` : ''}</span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {extras.length > 0 && (
         <section>
           <h4 className="cx-h">เพิ่มท็อปปิ้ง <span className="muted small">(ไม่บังคับ)</span></h4>
           <div className="cx-opts">
-            {menu.toppings.map((t) => {
+            {extras.map((t) => {
               const on = toppingIds.includes(t.id);
               return (
                 <label key={t.id} className={`perm-item ${on ? 'on' : ''}`}>

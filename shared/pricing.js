@@ -40,9 +40,37 @@ export function discountAmount(discount, unitPrice, qty) {
   }
 }
 
+export const CUSTOM_DISCOUNT_ID = 'custom';
+const fmtNum = (n) => String(round2(n));
+
+/**
+ * A discount typed in at the counter for one line: { name, type: 'percent' | 'amount', value }.
+ * amount = baht off per cup (same as catalog discounts). Returns null when there's nothing to apply;
+ * a discount without a name is not applied (the server rejects it, the POS asks for one).
+ */
+export function cleanCustomDiscount(c) {
+  if (!c) return null;
+  const type = c.type === 'percent' ? 'percent' : 'amount';
+  const raw = Math.max(0, Number(c.value) || 0);
+  const value = type === 'percent' ? Math.min(100, raw) : raw;
+  const name = String(c.name || '').trim().slice(0, 60);
+  if (!value || !name) return null;
+  return { name, type, value: round2(value) };
+}
+export const customDiscountLabel = (c) => (c.type === 'percent' ? `ลด ${fmtNum(c.value)}%` : `ลด ${fmtNum(c.value)} ฿/แก้ว`);
+
+/**
+ * Roast toppings a menu item must choose one of: the given (available) roast toppings when its category
+ * asks for a roast (e.g. coffee). Empty = no roast choice for this item.
+ */
+export function roastChoices(item, categories = [], toppings = []) {
+  const cat = item && categories.find((c) => c.id === item.categoryId);
+  return cat?.requireRoast ? toppings.filter((t) => t.isRoast) : [];
+}
+
 /**
  * Build a priced cart line from ids + catalog.
- * input: { menuItemId, toppingIds, discountIds, sweetness, qty, note, rewardQty }
+ * input: { menuItemId, toppingIds, discountIds, customDiscount, sweetness, qty, note, rewardQty }
  * rewardQty: cups of this line redeemed with loyalty stamps (each free up to catalog.loyalty.rewardMaxValue).
  */
 export function priceLine(input, catalog) {
@@ -78,6 +106,12 @@ export function priceLine(input, catalog) {
       remaining = round2(remaining - amt);
       return { id: d.id, name: d.name, type: d.type, amount: round2(amt) };
     }));
+  const custom = cleanCustomDiscount(input.customDiscount);
+  if (custom) {
+    const amt = Math.min(remaining, discountAmount(custom, unitPrice, qty));
+    remaining = round2(remaining - amt);
+    discs.push({ id: CUSTOM_DISCOUNT_ID, name: `${custom.name} (${customDiscountLabel(custom)})`, type: custom.type, value: custom.value, custom: true, amount: round2(amt) });
+  }
 
   const discountTotal = round2(discs.reduce((s, d) => s + d.amount, 0));
   return {
@@ -89,6 +123,7 @@ export function priceLine(input, catalog) {
     sweetness: input.sweetness ?? null,
     toppings: tops,
     discounts: discs,
+    customDiscount: custom,
     note: (input.note || '').toString().slice(0, 200),
     qty,
     rewardQty,

@@ -7,6 +7,34 @@ export const localDate = (d) => {
   return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
 };
 
+export const APPS = { grab: 'Grab', lineman: 'LINE MAN' };
+
+/**
+ * Cash in the shop right now: the last count ("set") + cash sales since − cash sales voided since
+ * − expenses paid from the drawer since ± cash put in / taken out since. null until a first count.
+ */
+export function cashDrawer(db) {
+  const moves = db.cashMoves || [];
+  const sets = moves.filter((m) => m.type === 'set');
+  if (!sets.length) return null;
+  const last = sets.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+  const since = last.createdAt;
+  const sum = (arr, f) => round2(arr.reduce((s, x) => s + (Number(f(x)) || 0), 0));
+  const cashOrders = db.orders.filter((o) => o.paymentMethod === 'cash');
+  const sales = sum(cashOrders.filter((o) => o.createdAt > since && o.status !== 'void'), (o) => o.total);
+  // A bill sold before the count but voided after it: that money was handed back from the drawer.
+  const refunds = sum(cashOrders.filter((o) => o.createdAt <= since && o.status === 'void' && o.voidedAt > since), (o) => o.total);
+  const expenses = sum(db.expenses.filter((e) => e.paidFromCash && e.createdAt > since), (e) => e.amount);
+  const after = moves.filter((m) => m.createdAt > since);
+  const cashIn = sum(after.filter((m) => m.type === 'in'), (m) => m.amount);
+  const cashOut = sum(after.filter((m) => m.type === 'out'), (m) => m.amount);
+  return {
+    balance: round2(last.amount + sales - refunds - expenses + cashIn - cashOut),
+    since, counted: last.amount, countedBy: last.userName,
+    sales, refunds, expenses, cashIn, cashOut,
+  };
+}
+
 export function parseRange(from, to) {
   const today = localDate(new Date());
   const f = /^\d{4}-\d{2}-\d{2}$/.test(from || '') ? from : today;
@@ -72,6 +100,13 @@ export function buildReport(db, range) {
     transfer: sum(paid.filter((o) => o.paymentMethod === 'transfer'), (o) => o.total),
     cashCount: paid.filter((o) => o.paymentMethod === 'cash').length,
     transferCount: paid.filter((o) => o.paymentMethod === 'transfer').length,
+    // Delivery apps (Grab / LINE MAN) are paid through the app, not into the shop's cash or account.
+    app: sum(paid.filter((o) => o.paymentMethod === 'app'), (o) => o.total),
+    appCount: paid.filter((o) => o.paymentMethod === 'app').length,
+    byApp: Object.fromEntries(Object.keys(APPS).map((k) => [k, {
+      sales: sum(paid.filter((o) => o.channel === k), (o) => o.total),
+      orders: paid.filter((o) => o.channel === k).length,
+    }])),
     cost,
     grossProfit,
     grossMargin: sales > 0 ? round2((grossProfit / sales) * 100) : 0,
@@ -91,7 +126,7 @@ export function buildReport(db, range) {
 
   // Daily breakdown
   const byDay = new Map(eachDay(range.start, range.end).map((d) => [d, {
-    date: d, orders: 0, cups: 0, sales: 0, cash: 0, transfer: 0, cost: 0, expenses: 0,
+    date: d, orders: 0, cups: 0, sales: 0, cash: 0, transfer: 0, app: 0, cost: 0, expenses: 0,
   }]));
   for (const o of paid) {
     const row = byDay.get(localDate(o.createdAt));
@@ -101,6 +136,7 @@ export function buildReport(db, range) {
     row.sales += o.total;
     row.cost += o.cost;
     if (o.paymentMethod === 'cash') row.cash += o.total;
+    else if (o.paymentMethod === 'app') row.app += o.total;
     else row.transfer += o.total;
   }
   for (const e of expenses) {
@@ -109,7 +145,7 @@ export function buildReport(db, range) {
   }
   const daily = [...byDay.values()].map((r) => ({
     ...r,
-    sales: round2(r.sales), cash: round2(r.cash), transfer: round2(r.transfer),
+    sales: round2(r.sales), cash: round2(r.cash), transfer: round2(r.transfer), app: round2(r.app),
     cost: round2(r.cost), expenses: round2(r.expenses),
     grossProfit: round2(r.sales - r.cost),
     netProfit: round2(r.sales - r.cost - r.expenses),
@@ -190,5 +226,6 @@ export function buildReport(db, range) {
     hours: hours.map((h) => ({ ...h, sales: round2(h.sales) })),
     staff: fin([...staff.values()]).sort((a, b) => b.sales - a.sales),
     expenseByCategory: [...expenseByCategory.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount),
+    cashDrawer: cashDrawer(db), // right now, not limited to the range
   };
 }

@@ -1036,3 +1036,39 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .crop-prev-list { width: 44px; height: 44px; }
 @media (max-width: 699px) { .crop-prev-pos { width: 120px; height: 90px; } .crop-prev-qr { width: 90px; height: 90px; } }
 .crop-size-low { color: var(--bad); }
+
+/* ---------- POS: delivery apps, roast, custom discount ---------- */
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 599px) { .grid-customer { grid-template-columns: 1fr 1fr; } .grid-customer .tile:last-child { grid-column: span 2; min-height: 0; } }
+.req-badge { display: inline-block; vertical-align: middle; font-size: 12px; font-weight: 600; color: var(--bad); background: var(--bad-50); padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
+.check-radio { border-radius: 50%; }
+.tile-out { opacity: .45; cursor: not-allowed; }
+.tile-out .tile-price { color: var(--bad); }
+.roast-grid { margin-bottom: 18px; }
+.custom-disc-add { margin-top: 12px; align-self: flex-start; }
+.custom-disc { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; border-color: var(--primary-100); }
+.custom-disc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.custom-disc-head b { display: inline-flex; align-items: center; gap: 6px; }
+.custom-disc-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.custom-disc-row .type-switch button { padding: 8px 14px; }
+.custom-disc-value { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 160px; }
+.custom-disc-value .input { max-width: 140px; font-size: 18px; font-weight: 600; }
+.app-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 12px; color: #fff; }
+.app-badge.app-grab, .app-grab .app-logo { background: #00b14f; }
+.app-badge.app-lineman, .app-lineman .app-logo { background: #1a1a1a; }
+.tile-app { min-height: 120px; }
+.app-logo { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 22px; color: #fff; }
+.badge-roast { margin-left: 6px; background: var(--primary-50); color: var(--primary-600); }
+.kpis:has(> :nth-child(5)) { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .kpis:has(> :nth-child(5)) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- cash in the shop ---------- */
+.cash-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; border-color: var(--good-50); }
+.cash-main { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.cash-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--good-50); color: var(--good); display: grid; place-items: center; flex-shrink: 0; }
+.cash-balance { font-size: 26px; font-weight: 700; color: var(--good); line-height: 1.2; }
+.cash-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cash-row-set td { background: var(--primary-50); }
+.cash-diff { font-weight: 600; }
+.cash-flag { margin-left: 6px; }
+.cash-strip b { font-size: 16px; }
