@@ -1072,3 +1072,17 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cash-diff { font-weight: 600; }
 .cash-flag { margin-left: 6px; }
 .cash-strip b { font-size: 16px; }
+
+/* ---------- transfer: shop QR + bank account ---------- */
+.pay-mode { align-self: flex-start; flex-wrap: wrap; }
+.pay-mode button { padding: 8px 12px; }
+.pay-upload { display: flex; gap: 8px; flex-wrap: wrap; }
+.pay-qr-info { display: flex; gap: 6px; align-items: flex-start; color: var(--good); background: var(--good-50); padding: 8px 10px; border-radius: var(--radius-sm); word-break: break-word; }
+.pay-preview { display: flex; gap: 14px; align-items: center; padding: 10px; border: 1px dashed var(--line-2); border-radius: var(--radius-sm); }
+.pay-preview img { flex-shrink: 0; border-radius: 8px; background: #fff; }
+.pay-bank { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 12px; }
+.bank-account { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--primary-50); text-align: left; }
+.bank-account-main { display: flex; flex-direction: column; min-width: 0; }
+.bank-account-no { font-size: 18px; letter-spacing: .5px; }
+.bank-account-compact .bank-account-no { font-size: 16px; }
+.cx-or { margin-top: 6px; }

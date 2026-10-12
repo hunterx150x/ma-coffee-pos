@@ -1,3 +1,4 @@
+import { thaiQrWithAmount } from '../shared/thaiqr.js';
 const pad = (n) => String(n).padStart(2, '0');
 
 export const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -73,6 +74,15 @@ export function downloadCsv(filename, rows) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/**
+ * QR text for a transfer of `amount`: the shop's own Thai QR with the amount filled in when chosen in settings,
+ * otherwise a PromptPay QR. null when neither is set up.
+ */
+export function transferQrPayload(payment, promptPayId, amount) {
+  if (payment?.mode === 'shopqr' && payment.shopQr) return thaiQrWithAmount(payment.shopQr, amount);
+  return promptPayPayload(promptPayId, amount);
 }
 
 // PromptPay (Thai QR) payload, EMVCo format.

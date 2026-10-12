@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { priceLine, summarize, roastChoices } from '../../shared/pricing.js';
-import { baht, sweetLabel, sweetDesc, promptPayPayload } from '../utils.js';
+import { baht, sweetLabel, sweetDesc, transferQrPayload } from '../utils.js';
+import BankAccount from '../components/BankAccount.jsx';
 import { Empty, Icon, Loading, Modal } from '../components/ui.jsx';
 import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
 import ContactBar from '../components/Contacts.jsx';
@@ -493,12 +494,13 @@ function PaySection({ token, q, onClaimed }) {
   const [slip, setSlip] = useState(null);
   const fileRef = useRef(null);
   const ppId = q.payment?.promptPayId;
+  const isShopQr = q.payment?.mode === 'shopqr' && !!q.payment.shopQr;
 
   useEffect(() => {
-    const payload = ppId && promptPayPayload(ppId, q.total);
+    const payload = transferQrPayload(q.payment, ppId, q.total);
     if (!payload || !(q.total > 0)) { setQr(null); return; }
     QRCode.toDataURL(payload, { margin: 2, width: 520 }).then(setQr).catch(() => setQr(null));
-  }, [ppId, q.total]);
+  }, [ppId, isShopQr, q.payment?.shopQr, q.total]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const copy = async () => {
     try {
@@ -535,14 +537,16 @@ function PaySection({ token, q, onClaimed }) {
       <div className="due"><span>ยอดที่ต้องชำระ</span><b>{baht(q.total)}</b></div>
       {qr ? (
         <div className="cx-pay-card">
-          <div className="cx-pay-title"><Icon name="qr" size={18} /> โอนผ่าน QR พร้อมเพย์</div>
-          <img className="cx-pay-qr" src={qr} alt={`QR พร้อมเพย์ ${baht(q.total)}`} />
+          <div className="cx-pay-title"><Icon name="qr" size={18} /> {isShopQr ? 'สแกนจ่ายผ่านแอปธนาคาร' : 'โอนผ่าน QR พร้อมเพย์'}</div>
+          <img className="cx-pay-qr" src={qr} alt={`QR รับเงิน ${baht(q.total)}`} />
           <div className="cx-pay-amount">{baht(q.total)}</div>
           <div className="muted small">กดค้างที่รูป QR เพื่อบันทึก แล้วเปิดสแกนจากแอปธนาคาร</div>
           <div className="cx-pay-tools">
-            <a className="btn btn-sm btn-outline" href={qr} download={`promptpay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
-            <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>
+            <a className="btn btn-sm btn-outline" href={qr} download={`pay-queue-${q.queueNo}.png`}><Icon name="download" size={16} /> บันทึก QR</a>
+            {!isShopQr && ppId && <button className="btn btn-sm btn-outline" onClick={copy}>{copied ? 'คัดลอกแล้ว ✓' : `คัดลอกเลข ${ppId}`}</button>}
           </div>
+          {q.payment.accountNo && <div className="muted small cx-or">หรือโอนเข้าบัญชีด้วยยอด {baht(q.total)}</div>}
+          <BankAccount payment={q.payment} />
 
           {q.payment.claimedAt ? (
             <div className="cx-claimed">

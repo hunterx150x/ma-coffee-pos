@@ -6,6 +6,9 @@ import { Field, Icon, Loading, PageHead, Toggle, useAsync, useUi } from '../comp
 import { thDateTime } from '../utils.js';
 import QRCode from 'qrcode';
 import { CONTACTS, ContactIcon } from '../components/Contacts.jsx';
+import BankAccount from '../components/BankAccount.jsx';
+import { checkThaiQr, thaiQrWithAmount } from '../../shared/thaiqr.js';
+import { baht, promptPayPayload } from '../utils.js';
 
 export default function Settings() {
   const { user } = useAuth();
@@ -78,13 +81,13 @@ export default function Settings() {
         </div>
         <div className="card form">
           <h3 className="card-title">การขาย</h3>
-          <Field label="เลขพร้อมเพย์ (เบอร์โทร / เลขบัตรประชาชน)" hint="ใช้สร้าง QR รับเงินโอนพร้อมยอดเงินอัตโนมัติ">
-            <input className="input" inputMode="numeric" value={f.promptPayId} onChange={(e) => setF({ ...f, promptPayId: e.target.value })} />
-          </Field>
           <Field label="ระดับความหวาน (%)" hint="คั่นด้วยเครื่องหมายจุลภาค เช่น 0, 25, 50, 75, 100">
             <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
           </Field>
         </div>
+        <PaymentCard pay={{ mode: 'promptpay', shopQr: '', bankName: '', accountNo: '', accountName: '', ...(f.payment || {}) }}
+          promptPayId={f.promptPayId} setPromptPayId={(v) => setF({ ...f, promptPayId: v })}
+          setPay={(payment) => setF({ ...f, payment })} />
         <LoyaltyCard loyalty={{ enabled: true, cupsPerReward: 9, rewardMaxValue: 40, excludeCategoryIds: [], ...(f.loyalty || {}) }}
           categories={cats.data || []} setLoyalty={(loyalty) => setF({ ...f, loyalty })} />
         <ContactsCard contacts={f.contacts || {}} setContacts={(contacts) => setF({ ...f, contacts })} />
@@ -328,3 +331,122 @@ function LeadsCard() {
   );
 }
 
+
+/** Read a QR code from a photo / screenshot in the browser. */
+async function decodeQrImage(file) {
+  const { default: jsQR } = await import('jsqr');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('เปิดไฟล์รูปไม่ได้'));
+      i.src = url;
+    });
+    // Try the photo at a few sizes: small QR in a big photo, or a tiny screenshot.
+    for (const side of [1000, 1600, 600, Math.max(img.width, img.height)]) {
+      const k = Math.min(1, side / Math.max(img.width, img.height)) || 1;
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k);
+      c.height = Math.round(img.height * k);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const r = jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: 'attemptBoth' });
+      if (r?.data) return r.data;
+    }
+    throw new Error('อ่าน QR จากรูปไม่ได้ — ลองครอปให้เห็น QR ชัดๆ หรือใช้ภาพหน้าจอจากแอปธนาคาร');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+const SAMPLE_AMOUNT = 50;
+
+/** How customers transfer: the shop's own Thai QR (amount filled in per bill) or PromptPay, plus the account number. */
+function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
+  const [err, setErr] = useState('');
+  const [preview, setPreview] = useState(null);
+  const fileRef = useRef(null);
+  const check = pay.shopQr ? checkThaiQr(pay.shopQr) : null;
+  const set = (patch) => setPay({ ...pay, ...patch });
+
+  useEffect(() => {
+    setPreview(null);
+    const payload = pay.mode === 'shopqr'
+      ? (check?.ok ? thaiQrWithAmount(pay.shopQr, SAMPLE_AMOUNT) : null)
+      : promptPayPayload(promptPayId, SAMPLE_AMOUNT);
+    if (payload) QRCode.toDataURL(payload, { margin: 1, width: 200 }).then(setPreview).catch(() => setPreview(null));
+  }, [pay.mode, pay.shopQr, promptPayId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const upload = async (file) => {
+    if (!file) return;
+    setErr('');
+    try {
+      const text = await decodeQrImage(file);
+      const c = checkThaiQr(text);
+      if (!c.ok) throw new Error(c.error);
+      set({ shopQr: text, mode: 'shopqr' });
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+
+  return (
+    <div className="card form pay-card">
+      <h3 className="card-title">การรับเงินโอน</h3>
+      <div className="type-switch pay-mode" role="group" aria-label="วิธีรับเงินโอน">
+        <button className={pay.mode === 'shopqr' ? 'active' : ''} onClick={() => set({ mode: 'shopqr' })}>QR ร้าน (บัญชีธนาคาร / K SHOP)</button>
+        <button className={pay.mode !== 'shopqr' ? 'active' : ''} onClick={() => set({ mode: 'promptpay' })}>พร้อมเพย์</button>
+      </div>
+
+      {pay.mode === 'shopqr' ? (
+        <>
+          <p className="muted small">อัปโหลดรูป QR รับเงินของร้าน (QR แบบไม่ระบุยอด) — ระบบจะสร้าง QR ใหม่ที่ <b>ระบุยอดของแต่ละบิล</b> ให้ลูกค้าอัตโนมัติ ทั้งหน้าชำระเงินและหน้าคิวของลูกค้า</p>
+          <div className="pay-upload">
+            <button className="btn btn-outline" onClick={() => fileRef.current?.click()}><Icon name="upload" size={18} /> {pay.shopQr ? 'เปลี่ยนรูป QR' : 'อัปโหลดรูป QR ร้าน'}</button>
+            {pay.shopQr && <button className="btn btn-ghost btn-danger-text" onClick={() => set({ shopQr: '' })}><Icon name="trash" size={16} /> ลบ</button>}
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { upload(e.target.files[0]); e.target.value = ''; }} />
+          </div>
+          {check?.ok && (
+            <div className="pay-qr-info small">
+              <Icon name="check" size={16} stroke={3} />
+              <span>
+                {check.info.kind === 'bill' ? `QR ร้านค้า · Biller ID ${check.info.billerId}${check.info.ref1 ? ` · Ref ${check.info.ref1}` : ''}` : check.info.kind === 'promptpay' ? `QR พร้อมเพย์ ${check.info.id}` : 'Thai QR'}
+                {check.info.hasAmount && ' · QR นี้มียอดอยู่แล้ว ระบบจะแทนด้วยยอดของแต่ละบิล'}
+              </span>
+            </div>
+          )}
+          {pay.shopQr && check && !check.ok && <div className="field-error">{check.error}</div>}
+        </>
+      ) : (
+        <Field label="เลขพร้อมเพย์ (เบอร์โทร / เลขบัตรประชาชน)" hint="ใช้สร้าง QR รับเงินโอนพร้อมยอดเงินอัตโนมัติ">
+          <input className="input" inputMode="numeric" value={promptPayId || ''} onChange={(e) => setPromptPayId(e.target.value)} />
+        </Field>
+      )}
+      {err && <div className="field-error">{err}</div>}
+
+      {preview && (
+        <div className="pay-preview">
+          <img src={preview} alt={`ตัวอย่าง QR ${baht(SAMPLE_AMOUNT)}`} width="150" height="150" />
+          <div className="small">
+            <b>ตัวอย่าง: บิล {baht(SAMPLE_AMOUNT)}</b>
+            <div className="muted">ลองสแกนด้วยแอปธนาคาร ควรเห็นชื่อร้านและยอด {baht(SAMPLE_AMOUNT)} — ตรวจสอบแล้วกดยกเลิกได้เลย ไม่ต้องโอนจริง</div>
+          </div>
+        </div>
+      )}
+
+      <div className="pay-bank">
+        <div className="muted small">เลขบัญชีสำหรับลูกค้าที่โอนด้วยการกรอกเลขบัญชี (ไม่บังคับ)</div>
+        <div className="form-grid">
+          <Field label="ธนาคาร"><input className="input" value={pay.bankName} maxLength={60} onChange={(e) => set({ bankName: e.target.value })} placeholder="เช่น กสิกรไทย" list="bank-names" /></Field>
+          <Field label="เลขบัญชี"><input className="input" inputMode="numeric" value={pay.accountNo} maxLength={30} onChange={(e) => set({ accountNo: e.target.value })} placeholder="เช่น 123-4-56789-0" /></Field>
+          <Field label="ชื่อบัญชี"><input className="input" value={pay.accountName} maxLength={80} onChange={(e) => set({ accountName: e.target.value })} placeholder="ชื่อบัญชีตามธนาคาร" /></Field>
+        </div>
+        <datalist id="bank-names">{['กสิกรไทย', 'ไทยพาณิชย์', 'กรุงเทพ', 'กรุงไทย', 'กรุงศรีอยุธยา', 'ทีทีบี', 'ออมสิน', 'ธ.ก.ส.'].map((b) => <option key={b} value={b} />)}</datalist>
+        {pay.accountNo && <BankAccount payment={pay} compact />}
+      </div>
+    </div>
+  );
+}

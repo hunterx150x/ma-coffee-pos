@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { baht, promptPayPayload } from '../utils.js';
+import { baht, transferQrPayload } from '../utils.js';
+import BankAccount from './BankAccount.jsx';
 import { Icon, Modal, Field, Loading } from './ui.jsx';
 
-/** Choose cash / transfer, take cash and show change, or show a PromptPay QR. */
+/** Choose cash / transfer, take cash and show change, or show the shop's transfer QR with the amount. */
 export default function PaymentModal({ open, total, settings, onClose, onPay, defaultMethod = null }) {
   const [method, setMethod] = useState(null);
   const [cash, setCash] = useState('');
@@ -17,10 +18,12 @@ export default function PaymentModal({ open, total, settings, onClose, onPay, de
 
   useEffect(() => {
     setQr(null);
-    if (method !== 'transfer' || !settings.promptPayId) return;
-    const payload = promptPayPayload(settings.promptPayId, total);
+    if (method !== 'transfer') return;
+    const payload = transferQrPayload(settings.payment, settings.promptPayId, total);
     if (payload) QRCode.toDataURL(payload, { margin: 1, width: 240 }).then(setQr).catch(() => setQr(null));
-  }, [method, total, settings.promptPayId]);
+  }, [method, total, settings.promptPayId, settings.payment]);
+  const shopQr = settings.payment?.mode === 'shopqr' && settings.payment.shopQr;
+  const hasQr = shopQr || settings.promptPayId;
 
   const received = cash === '' ? total : Number(cash);
   const change = received - total;
@@ -81,16 +84,17 @@ export default function PaymentModal({ open, total, settings, onClose, onPay, de
 
       {method === 'transfer' && (
         <div className="pay-transfer">
-          {settings.promptPayId ? (
+          {hasQr ? (
             qr ? (
               <>
-                <img src={qr} alt="PromptPay QR" width="220" height="220" />
-                <div className="muted small">PromptPay: {settings.promptPayId}</div>
+                <img src={qr} alt={`QR รับเงิน ${baht(total)}`} width="220" height="220" />
+                <div className="muted small">{shopQr ? `QR ร้าน · ระบุยอด ${baht(total)} ให้แล้ว` : `PromptPay: ${settings.promptPayId}`}</div>
               </>
             ) : <Loading />
-          ) : (
-            <p className="muted">ตรวจสอบยอดโอนจากลูกค้า แล้วกด “ยืนยันรับเงิน”<br /><span className="small">(ตั้งค่าเลขพร้อมเพย์ที่ “ตั้งค่าร้าน” เพื่อแสดง QR อัตโนมัติ)</span></p>
+          ) : !settings.payment?.accountNo && (
+            <p className="muted">ตรวจสอบยอดโอนจากลูกค้า แล้วกด “ยืนยันรับเงิน”<br /><span className="small">(ตั้งค่า QR รับเงินที่ “ตั้งค่าร้าน” เพื่อแสดง QR พร้อมยอดอัตโนมัติ)</span></p>
           )}
+          <BankAccount payment={settings.payment} compact />
         </div>
       )}
       {err && <div className="field-error">{err}</div>}

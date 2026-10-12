@@ -226,6 +226,8 @@ function defaultSettings() {
     address: '',
     phone: '',
     promptPayId: '',
+    // Transfer: the shop's own Thai QR (e.g. K SHOP) re-issued with the bill amount, or PromptPay; plus account details.
+    payment: { mode: 'promptpay', shopQr: '', bankName: '', accountNo: '', accountName: '' },
     receiptFooter: 'ขอบคุณที่อุดหนุนค่ะ ☕',
     sweetnessLevels: [25, 50, 75, 100],
     // leadGroupId: where trial requests from /system go (empty = same group as sales).

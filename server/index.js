@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword, signToken, verifyToken } from './auth.js'
 import { buildReport, parseRange, inRange, localDate, cashDrawer, APPS } from './report.js';
 import { priceLine, summarize, round2, unitCost, stampsEarned, rewardsAvailable, cleanCustomDiscount, roastChoices } from '../shared/pricing.js';
 import { hasPerm, PERMISSIONS } from '../shared/permissions.js';
+import { checkThaiQr, thaiQrWithAmount } from '../shared/thaiqr.js';
 import * as line from './line.js';
 import * as events from './events.js';
 import { audit, auditMutations, describeChanges, describeRecord, itemsText, STATUS_TH } from './audit.js';
@@ -255,6 +256,7 @@ app.get('/api/public/queues/:token', h((req) => {
     })(),
     payment: {
       promptPayId: db.settings.promptPayId || '',
+      ...publicPayment(db.settings),
       claimedAt: q.paymentClaim?.at || null,
       hasSlip: Boolean(q.paymentClaim?.slipId),
     },
@@ -1233,11 +1235,21 @@ app.delete('/api/users/:id', ownerOnly, h((req) => {
   return { ok: true };
 }));
 
+/** What the customer's pay page needs: the shop QR (when chosen) and the account to type in by hand. */
+function publicPayment(s) {
+  const p = s.payment || {};
+  return {
+    mode: p.mode === 'shopqr' && p.shopQr ? 'shopqr' : 'promptpay',
+    shopQr: p.mode === 'shopqr' ? p.shopQr || '' : '',
+    bankName: p.bankName || '', accountNo: p.accountNo || '', accountName: p.accountName || '',
+  };
+}
+
 // ---------- settings & backup ----------
 app.get('/api/settings', h(() => getDb().settings));
 app.put('/api/settings', need('settings'), h((req, res) => {
   const b = req.body || {};
-  const SECTION = { shopName: 'ชื่อร้าน', address: 'ที่อยู่', phone: 'เบอร์', promptPayId: 'พร้อมเพย์', receiptFooter: 'ท้ายใบเสร็จ', sweetnessLevels: 'ความหวาน',
+  const SECTION = { shopName: 'ชื่อร้าน', address: 'ที่อยู่', phone: 'เบอร์', promptPayId: 'พร้อมเพย์', payment: 'วิธีรับเงินโอน', receiptFooter: 'ท้ายใบเสร็จ', sweetnessLevels: 'ความหวาน',
     selfOrder: 'QR สั่งเอง', line: 'LINE', loyalty: 'สะสมแต้ม', contacts: 'ช่องทางติดต่อ' };
   const prevSettings = JSON.parse(JSON.stringify(getDb().settings));
   const s = getDb().settings;
@@ -1246,6 +1258,21 @@ app.put('/api/settings', need('settings'), h((req, res) => {
   if (b.phone !== undefined) s.phone = str(b.phone, 30);
   if (b.promptPayId !== undefined) s.promptPayId = str(b.promptPayId, 20).replace(/[^0-9]/g, '');
   if (b.receiptFooter !== undefined) s.receiptFooter = str(b.receiptFooter, 200);
+  if (b.payment && typeof b.payment === 'object') {
+    const p = b.payment;
+    let shopQr = '';
+    if (str(p.shopQr, 600)) {
+      const c = checkThaiQr(str(p.shopQr, 600));
+      if (!c.ok) fail(400, c.error);
+      shopQr = thaiQrWithAmount(str(p.shopQr, 600), 0); // stored without an amount; each bill adds its own
+    }
+    const mode = p.mode === 'shopqr' ? 'shopqr' : 'promptpay';
+    if (mode === 'shopqr' && !shopQr) fail(400, 'กรุณาอัปโหลด QR รับเงินของร้าน');
+    s.payment = {
+      mode, shopQr,
+      bankName: str(p.bankName, 60), accountNo: str(p.accountNo, 30).replace(/[^0-9-]/g, ''), accountName: str(p.accountName, 80),
+    };
+  }
   if (b.loyalty && typeof b.loyalty === 'object') {
     const cur = s.loyalty || {};
     const cups = Math.trunc(Number(b.loyalty.cupsPerReward ?? cur.cupsPerReward));
