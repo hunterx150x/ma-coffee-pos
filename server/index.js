@@ -246,6 +246,7 @@ app.get('/api/public/queues/:token', h((req) => {
     status: q.status,
     // staff started at least one drink (grinding / waiting to brew / making all show as "กำลังทำ")
     making: q.status === 'waiting' && Object.keys(q.lineSteps || {}).length > 0,
+    readyCups: q.lines.reduce((a, l, i) => a + (lineProgress(q, i) === 'ready' ? l.qty : 0), 0),
     createdAt: q.createdAt,
     ahead,
     position: q.status === 'waiting' ? ahead + 1 : 0,
@@ -253,8 +254,9 @@ app.get('/api/public/queues/:token', h((req) => {
     total: q.total,
     cups: q.cups,
     orderNo: q.orderNo || null,
-    lines: q.lines.map((l) => ({
+    lines: q.lines.map((l, i) => ({
       name: l.name, qty: l.qty, sweetness: l.sweetness, note: l.note, total: l.total, gross: l.gross,
+      progress: lineProgress(q, i), // bar details (grinding...) stay with the staff
       toppings: l.toppings.map((t) => ({ id: t.id, name: t.name, price: t.price })),
       discounts: l.discounts.map((d) => ({ id: d.id, name: d.name, amount: d.amount })),
     })),
@@ -1104,6 +1106,10 @@ app.post('/api/queues/:id/status', need('queue'), h((req, res) => {
   if (q.status === 'cancelled' && status !== 'waiting') fail(400, 'คิวนี้ถูกยกเลิกแล้ว');
   const prev = q.status;
   q.status = status;
+  // back from "done" to "waiting": drinks marked ready are being remade, so clear those marks
+  if (status === 'waiting' && prev === 'done' && q.lineSteps) {
+    q.lineSteps = Object.fromEntries(Object.entries(q.lineSteps).filter(([, v]) => v.step !== 'ready'));
+  }
   if (status === 'done') q.doneAt = now();
   if (status === 'cancelled') {
     q.cancelledAt = now();
@@ -1120,7 +1126,13 @@ app.post('/api/queues/:id/status', need('queue'), h((req, res) => {
 
 // Progress of each drink in a waiting queue, so every position at the bar knows where it is.
 // Coffee menus (category needs a roast) also get the grinder steps; customers only ever see "กำลังทำ".
-const LINE_STEPS = { grinding: 'กำลังบดเมล็ดกาแฟ', ground: 'บดแล้วรอชง', making: 'กำลังทำ' };
+const LINE_STEPS = { grinding: 'กำลังบดเมล็ดกาแฟ', ground: 'บดแล้วรอชง', making: 'กำลังทำ', ready: 'เสร็จแล้ว' };
+/** What the customer sees per drink: waiting / making (any bar step) / ready. */
+const lineProgress = (q, i) => {
+  if (q.status === 'done' || q.status === 'paid') return 'ready';
+  const st = q.lineSteps?.[i]?.step;
+  return st === 'ready' ? 'ready' : st ? 'making' : 'waiting';
+};
 const COFFEE_ONLY_STEPS = new Set(['grinding', 'ground']);
 app.post('/api/queues/:id/lines/:i/step', need('queue'), h((req, res) => {
   const q = findQueue(req.params.id);
@@ -1137,11 +1149,17 @@ app.post('/api/queues/:id/lines/:i/step', need('queue'), h((req, res) => {
   q.lineSteps = { ...(q.lineSteps || {}) };
   if (step) q.lineSteps[i] = { step, at: now(), by: req.user.name };
   else delete q.lineSteps[i];
+  // every drink ready -> the whole queue is done (the customer is told to pick up)
+  const allReady = q.lines.every((_, k) => q.lineSteps[k]?.step === 'ready');
+  if (allReady) {
+    q.status = 'done';
+    q.doneAt = now();
+  }
   q.updatedAt = now();
   markDirty('queues', q.createdAt);
   save();
   events.broadcast('queues', { id: q.id, status: q.status });
-  res.locals.audit = `คิว ${q.queueNo} ${q.name || ''} · ${line.qty}×${line.name} → ${step ? LINE_STEPS[step] : 'ล้างสถานะ'}`;
+  res.locals.audit = `คิว ${q.queueNo} ${q.name || ''} · ${line.qty}×${line.name} → ${step ? LINE_STEPS[step] : 'ล้างสถานะ'}${allReady ? ' · ครบทุกแก้ว → ทำแล้ว' : ''}`;
   return q;
 }));
 

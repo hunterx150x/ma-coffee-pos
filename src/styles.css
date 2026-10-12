@@ -1305,3 +1305,14 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .queue-line-grinding { border-color: #a5754e; }
 .queue-line-ground { border-color: #eda100; }
 .queue-line-making { border-color: var(--info); }
+.step-btn.step-ready { border-color: var(--good); color: var(--good); }
+.step-btn.on.step-ready { background: var(--good); border-color: var(--good); color: #fff; }
+.line-step.step-ready { background: var(--good-50); color: var(--good); }
+.queue-line-ready { border-left: 3px solid var(--good); padding-left: 8px; }
+/* customer: per-drink progress */
+.cx-prog { display: inline-block; margin-left: 8px; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; vertical-align: middle; }
+.cx-prog-waiting { background: var(--warn-50); color: var(--warn); }
+.cx-prog-making { background: var(--info-50); color: var(--info); }
+.cx-prog-ready { background: var(--good-50); color: var(--good); }
+.cx-line-ready { border-color: var(--good); }
+.cx-ready-count { margin-left: 8px; font-size: 13px; font-weight: 600; color: var(--good); }

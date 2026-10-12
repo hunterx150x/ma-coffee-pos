@@ -381,6 +381,8 @@ const STATUS_TEXT = {
   cancelled: { title: 'คิวนี้ถูกยกเลิก', cls: 'cancelled' },
 };
 
+const LINE_PROGRESS = { waiting: 'รอทำ', making: 'กำลังทำ', ready: '✓ เสร็จแล้ว' };
+
 function TrackQueue({ token, go }) {
   const [q, setQ] = useState(null);
   const [err, setErr] = useState('');
@@ -464,12 +466,18 @@ function TrackQueue({ token, go }) {
         {q.loyalty?.rewards > 0 && q.status !== 'paid' && q.status !== 'cancelled' && (
           <div className="cx-reward-hint">🎁 คุณมีสิทธิ์แลกฟรี {q.loyalty.rewards} แก้ว — แจ้งพนักงานตอนชำระเงินได้เลย</div>
         )}
-        <h3 className="cx-h">รายการที่สั่ง</h3>
+        <h3 className="cx-h">
+          รายการที่สั่ง
+          {q.status === 'waiting' && q.readyCups > 0 && <span className="cx-ready-count">พร้อมแล้ว {q.readyCups}/{q.cups} แก้ว</span>}
+        </h3>
         <div className="cx-lines">
           {q.lines.map((l, i) => (
-            <div key={i} className="cx-line">
+            <div key={i} className={`cx-line ${l.progress === 'ready' && q.status === 'waiting' ? 'cx-line-ready' : ''}`}>
               <div className="cx-line-main">
                 <b>{l.qty} × {l.name}</b>
+                {(q.status === 'waiting' || q.status === 'done') && l.progress && (
+                  <span className={`cx-prog cx-prog-${l.progress}`}>{LINE_PROGRESS[l.progress]}</span>
+                )}
                 <div className="muted small">{[sweetLabel(l.sweetness), ...l.toppings.map((t) => `+${t.name}`), ...l.discounts.map((d) => `${d.name} −${baht(d.amount)}`)].filter(Boolean).join(' · ')}</div>
                 {l.note && <div className="line-note">หมายเหตุ: {l.note}</div>}
               </div>

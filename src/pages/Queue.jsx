@@ -29,9 +29,11 @@ const STEPS = {
   grinding: { label: 'กำลังบดเมล็ดกาแฟ', short: 'กำลังบด', cls: 'step-grinding' },
   ground: { label: 'บดแล้วรอชง', short: 'บดแล้วรอชง', cls: 'step-ground' },
   making: { label: 'กำลังทำ', short: 'กำลังทำ', cls: 'step-making' },
+  ready: { label: 'เสร็จแล้ว', short: 'เสร็จแล้ว', cls: 'step-ready' },
 };
-const COFFEE_STEPS = ['grinding', 'ground', 'making'];
-const OTHER_STEPS = ['making'];
+// "เสร็จแล้ว" on every drink also finishes the queue (the customer is told to pick up).
+const COFFEE_STEPS = ['grinding', 'ground', 'making', 'ready'];
+const OTHER_STEPS = ['making', 'ready'];
 
 export default function Queue() {
   const { toast, confirm } = useUi();
