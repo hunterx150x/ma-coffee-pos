@@ -194,35 +194,47 @@ export default function Queue() {
                     const at = Math.max(0, flow.indexOf(cur?.step || null));
                     const next = flow[at + 1];
                     const nextLabel = next === 'making' && coffee ? 'เริ่มชง' : NEXT_LABEL[next];
+                    const state = x.status === 'waiting' ? (cur?.step || 'waiting') : 'none';
                     return (
-                    <div key={i} className={`queue-line ${cur ? `queue-line-${cur.step}` : ''}`}>
-                      <div className="sum-row"><b>{l.qty} × {l.name}</b><span>{baht(l.total)}</span></div>
-                      <LineDetail line={l} showPrice={false} />
+                    <div key={i} className={`qline qline-${state}`}>
+                      <div className="qline-main">
+                        <div className="qline-title">
+                          <b>{l.qty} × {l.name}</b>
+                          {cat.data && (
+                            <button className="icon-btn qline-howto" onClick={() => setHowToLine(l)} title="ดูวิธีทำ" aria-label={`ดูวิธีทำ ${l.name}`}>
+                              <Icon name="book" size={16} />
+                            </button>
+                          )}
+                        </div>
+                        <LineDetail line={l} showPrice={false} />
+                        <div className="muted small">{baht(l.total)}</div>
+                      </div>
                       {x.status === 'waiting' && cat.data && (
-                        <div className="line-progress">
-                          <div className="line-progress-info">
+                        <div className="qline-side">
+                          <div className="qline-status">
                             <span className={`line-step ${cur ? STEPS[cur.step].cls : 'step-waiting'}`}>{cur ? STEPS[cur.step].label : 'รอทำ'}</span>
                             <span className="step-dots" aria-hidden="true">
                               {flow.slice(1).map((k, j) => <span key={k} className={j < at ? 'on' : ''} />)}
                             </span>
-                            {cur && <span className="muted small">{cur.by} {thTime(cur.at)}</span>}
                           </div>
-                          <div className="line-progress-actions">
-                            {at > 0 && (
+                          <div className="qline-btns">
+                            {at > 0 && (next ? (
                               <button className="icon-btn step-undo" onClick={() => setStep(x, i, flow[at - 1])} title="ย้อนกลับ 1 ขั้น" aria-label={`ย้อนสถานะ ${l.name}`}>
-                                <Icon name="undo" size={16} />
+                                <Icon name="undo" size={18} />
                               </button>
-                            )}
+                            ) : (
+                              <button className="btn btn-outline step-back" onClick={() => setStep(x, i, flow[at - 1])}>
+                                <Icon name="undo" size={16} /> ย้อนกลับ
+                              </button>
+                            ))}
                             {next && (
-                              <button className={`btn btn-sm step-next ${STEPS[next].cls}`} onClick={() => setStep(x, i, next)}>
-                                {next === 'ready' && <Icon name="check" size={16} />} {nextLabel}
+                              <button className={`btn step-next ${STEPS[next].cls}`} onClick={() => setStep(x, i, next)}>
+                                {next === 'ready' && <Icon name="check" size={18} />} {nextLabel}
                               </button>
                             )}
                           </div>
+                          {cur && <div className="muted small qline-by">{cur.by} · {thTime(cur.at)}</div>}
                         </div>
-                      )}
-                      {cat.data && (
-                        <button className="btn btn-sm btn-ghost btn-howto" onClick={() => setHowToLine(l)}><Icon name="book" size={16} /> ดูวิธีทำ</button>
                       )}
                     </div>
                     );

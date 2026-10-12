@@ -52,6 +52,9 @@
   --meter-top: #e8c79f;
   --scrim: rgba(43, 29, 20, .45);
   --input-bg: #ffffff;          /* inputs */
+  --good-fill: #2e7d52;         /* solid button / badge fills under white text */
+  --info-fill: #2a6f97;
+  --bad-fill: #c0392b;
   --selected: var(--primary);   /* border of a selected tile / list row */
   --tab-active: #ffffff;        /* active tab / switch segment */
   --tab-active-ink: #5a3e2b;
@@ -171,9 +174,9 @@ a { color: inherit; text-decoration: none; }
 .btn:disabled { opacity: .45; }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-600); }
-.btn-success { background: var(--good); color: #fff; }
+.btn-success { background: var(--good-fill); color: #fff; }
 .btn-success:hover:not(:disabled) { filter: brightness(.93); }
-.btn-danger { background: var(--bad); color: #fff; }
+.btn-danger { background: var(--bad-fill); color: #fff; }
 .btn-outline { background: var(--surface); border-color: var(--line-2); color: var(--primary-ink-2); }
 .btn-outline:hover:not(:disabled) { border-color: var(--primary); background: var(--primary-50); }
 .btn-ghost { background: transparent; color: var(--ink-2); }
@@ -305,7 +308,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .toasts { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: max-content; max-width: calc(100vw - 32px); }
 .toast { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; background: var(--ink); color: #fff; box-shadow: var(--shadow-lg); font-size: 14.5px; animation: pop .18s; }
 .toast-success .icon { color: #7fd3a5; }
-.toast-error { background: var(--bad); }
+.toast-error { background: var(--bad-fill); }
 
 /* ---------- login ---------- */
 .login { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: radial-gradient(circle at 20% 10%, var(--login-a), transparent 50%), radial-gradient(circle at 90% 90%, var(--login-b), transparent 45%), var(--bg); }
@@ -442,7 +445,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .pay-transfer img { border-radius: 12px; border: 1px solid var(--line); }
 
 .success-banner { display: flex; align-items: center; gap: 16px; padding: 14px 16px; background: var(--good-50); border-radius: var(--radius); }
-.success-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--good); color: #fff; display: grid; place-items: center; flex-shrink: 0; }
+.success-icon { width: 52px; height: 52px; border-radius: 50%; background: var(--good-fill); color: #fff; display: grid; place-items: center; flex-shrink: 0; }
 .success-amount { font-size: 28px; font-weight: 700; color: var(--good); }
 .change { font-size: 16px; }
 
@@ -582,8 +585,8 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .queue-cancelled { border-left-color: var(--bad); opacity: .7; }
 .queue-head { display: flex; align-items: center; gap: 12px; }
 .queue-no { width: 52px; height: 52px; border-radius: 14px; background: var(--primary); color: #fff; font-size: 24px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
-.queue-done .queue-no { background: var(--info); }
-.queue-paid .queue-no { background: var(--good); }
+.queue-done .queue-no { background: var(--info-fill); }
+.queue-paid .queue-no { background: var(--good-fill); }
 .queue-cancelled .queue-no { background: var(--muted); }
 .queue-head-main { flex: 1; min-width: 0; }
 .queue-name { font-size: 17px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -708,7 +711,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cx-ahead-num { font-size: 40px; color: var(--primary-ink); }
 .cx-ticket-done { border-color: var(--good); background: var(--good-50); animation: pop .3s; }
 .cx-ticket-done .cx-ticket-no { color: var(--good); }
-.cx-ticket-done .cx-ticket-status { background: var(--good); color: #fff; }
+.cx-ticket-done .cx-ticket-status { background: var(--good-fill); color: #fff; }
 .cx-ticket-paid .cx-ticket-status { background: var(--good-50); color: var(--good); }
 .cx-ticket-cancelled { opacity: .8; }
 .cx-ticket-cancelled .cx-ticket-no { color: var(--muted); }
@@ -1157,7 +1160,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cx-choice-transfer { border-color: #2a78d6; color: var(--blue-ink); background: var(--blue-50); }
 .cx-choice-transfer.on { background: #2a78d6; color: #fff; }
 .cx-choice-cash { border-color: var(--good); color: var(--good); background: var(--good-50); }
-.cx-choice-cash.on { background: var(--good); color: #fff; }
+.cx-choice-cash.on { background: var(--good-fill); color: #fff; }
 .cx-pay-body { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line-2); }
 .cx-claim { border-top: 0; padding-top: 2px; margin-top: 0; }
 .cx-slip-drop { padding: 12px; flex-direction: row; justify-content: center; }
@@ -1215,6 +1218,9 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
   --meter-top: #8b6a4a;
   --scrim: rgba(0, 0, 0, .6);
   --input-bg: #18120e;
+  --good-fill: #2b7a4f;
+  --info-fill: #2b6a93;
+  --bad-fill: #b23a2c;
   --selected: #e0a46b;
   --tab-active: #a5754e;
   --tab-active-ink: #ffffff;
@@ -1270,6 +1276,9 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
     --meter-top: #8b6a4a;
     --scrim: rgba(0, 0, 0, .6);
     --input-bg: #18120e;
+  --good-fill: #2b7a4f;
+  --info-fill: #2b6a93;
+  --bad-fill: #b23a2c;
   --selected: #e0a46b;
   --tab-active: #a5754e;
   --tab-active-ink: #ffffff;
@@ -1296,7 +1305,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .step-btn.step-making { border-color: var(--info); color: var(--info); }
 .step-btn.on.step-grinding { background: #a5754e; border-color: #a5754e; color: #fff; }
 .step-btn.on.step-ground { background: #eda100; border-color: #eda100; color: #2b1d14; }
-.step-btn.on.step-making { background: var(--info); border-color: var(--info); color: #fff; }
+.step-btn.on.step-making { background: var(--info-fill); border-color: var(--info-fill); color: #fff; }
 .line-step { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
 .line-step.step-grinding { background: var(--primary-50); color: var(--primary-ink); }
 .line-step.step-ground { background: var(--hl); color: var(--hl-ink); }
@@ -1306,7 +1315,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .queue-line-ground { border-color: #eda100; }
 .queue-line-making { border-color: var(--info); }
 .step-btn.step-ready { border-color: var(--good); color: var(--good); }
-.step-btn.on.step-ready { background: var(--good); border-color: var(--good); color: #fff; }
+.step-btn.on.step-ready { background: var(--good-fill); border-color: var(--good-fill); color: #fff; }
 .line-step.step-ready { background: var(--good-50); color: var(--good); }
 .queue-line-ready { border-left: 3px solid var(--good); padding-left: 8px; }
 /* customer: per-drink progress */
@@ -1327,6 +1336,35 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .step-dots span.on { background: var(--good); }
 .step-next { min-height: 40px; min-width: 112px; color: #fff; border: 0; font-weight: 700; }
 .step-next.step-grinding, .step-next.step-ground { background: #a5754e; }
-.step-next.step-making { background: var(--info); }
-.step-next.step-ready { background: var(--good); }
+.step-next.step-making { background: var(--info-fill); }
+.step-next.step-ready { background: var(--good-fill); }
 .step-undo { color: var(--muted); }
+
+/* ---------- queue card v2: one row per drink, status + big button on the right ---------- */
+.queue-grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+@media (max-width: 599px) { .queue-grid { grid-template-columns: minmax(0, 1fr); } }
+.queue-lines { gap: 8px; }
+.qline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 44%); gap: 10px; align-items: center;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); border-left: 5px solid var(--line-2); background: var(--surface-2); }
+.qline-none { grid-template-columns: minmax(0, 1fr); }
+.qline-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.qline-title { display: flex; align-items: flex-start; gap: 4px; }
+.qline-title b { flex: 1; min-width: 0; font-size: 15.5px; line-height: 1.35; }
+.qline-howto { width: 30px; height: 30px; min-height: 30px; margin: -4px -6px 0 0; color: var(--primary-ink-2); }
+.qline-side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.qline-status { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.qline-status .line-step { margin: 0; }
+.qline-btns { display: flex; gap: 6px; }
+.qline-btns .step-next { flex: 1; min-height: 46px; min-width: 0; font-size: 15px; border-radius: 12px; }
+.qline-btns .step-undo { width: 46px; height: 46px; min-height: 46px; border: 1px solid var(--line-2); border-radius: 12px; flex-shrink: 0; }
+.qline-by { text-align: right; }
+/* row tint follows the drink's step */
+.qline-waiting { border-left-color: var(--warn); }
+.qline-grinding { border-left-color: #a5754e; background: color-mix(in srgb, #a5754e 10%, var(--surface)); }
+.qline-ground { border-left-color: #eda100; background: color-mix(in srgb, #eda100 10%, var(--surface)); }
+.qline-making { border-left-color: var(--info); background: color-mix(in srgb, var(--info) 10%, var(--surface)); }
+.qline-ready { border-left-color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
+@media (max-width: 420px) {
+  .qline { grid-template-columns: minmax(0, 1fr); }
+}
+.qline-btns .step-back { flex: 1; min-height: 46px; border-radius: 12px; color: var(--muted); }
