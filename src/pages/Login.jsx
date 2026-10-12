@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { Field } from '../components/ui.jsx';
+import { Field, ThemeToggle } from '../components/ui.jsx';
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -24,6 +24,7 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="login">
+      <ThemeToggle className="login-theme" />
       <form className="login-card" onSubmit={submit}>
         <img src="/icon.svg" alt="" width="64" height="64" />
         <h1>MA Coffee</h1>

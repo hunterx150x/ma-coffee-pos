@@ -3,7 +3,7 @@ import { api, getToken, setToken } from './api.js';
 import { initial } from './utils.js';
 import { onRealtime } from './realtime.js';
 import { hasPerm, ROLES } from '../shared/permissions.js';
-import { Icon, Loading, Modal, Field, useUi } from './components/ui.jsx';
+import { Icon, Loading, Modal, Field, useUi, ThemeToggle } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
 import Pos from './pages/Pos.jsx';
 import Queue from './pages/Queue.jsx';
@@ -119,6 +119,7 @@ export default function App() {
               <div className="brand-name">MA Coffee</div>
               <div className="brand-sub">ระบบขายหน้าร้าน</div>
             </div>
+            <ThemeToggle className="brand-theme" />
           </div>
           <nav className="nav">
             {allowed.map((r) => (
@@ -150,6 +151,7 @@ export default function App() {
           <header className="topbar">
             <button className="icon-btn" onClick={() => setNavOpen(true)} aria-label="เปิดเมนู"><Icon name="menu" /></button>
             <div className="topbar-title">{current?.label}</div>
+            <ThemeToggle />
             <div className="avatar avatar-sm">{initial(user.name)}</div>
           </header>
           <main className="content">

@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { priceLine, summarize, roastChoices } from '../../shared/pricing.js';
 import { baht, sweetLabel, sweetDesc, sweetParts, transferQrPayload } from '../utils.js';
 import BankAccount from '../components/BankAccount.jsx';
-import { Empty, Icon, Loading, Modal, SweetDetail } from '../components/ui.jsx';
+import { Empty, Icon, Loading, Modal, SweetDetail, ThemeToggle } from '../components/ui.jsx';
 import { MenuThumb, resizeToDataUrl } from '../components/MenuImage.jsx';
 import ContactBar from '../components/Contacts.jsx';
 import StampCard from '../components/StampCard.jsx';
@@ -71,6 +71,7 @@ function ShopHeader({ name, children }) {
         <div className="cx-shop">{name || 'MA Coffee'}</div>
         <div className="cx-sub">{children}</div>
       </div>
+      <ThemeToggle />
     </header>
   );
 }

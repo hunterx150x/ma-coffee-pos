@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTheme as useThemeHook, THEME_LABEL } from '../theme.js';
 import { presetRange } from '../utils.js';
 
 // ---------- icons (stroke icons, 24px grid) ----------
@@ -44,6 +45,9 @@ const PATHS = {
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z M12 6v6l4 2',
   tag: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z M7 7h.01',
   rotate: 'M21 12a9 9 0 1 1-2.6-6.4 M21 3v6h-6',
+  sun: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4',
+  moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+  monitor: 'M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8 20h8 M12 16v4',
   crop: 'M6 2v14a2 2 0 0 0 2 2h14 M18 22V8a2 2 0 0 0-2-2H2',
 };
 
@@ -286,3 +290,15 @@ export function SweetDetail({ parts }) {
   );
 }
 const nfSweet = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
+
+/** Light / dark / follow-the-device switch (cycles on tap). */
+export function ThemeToggle({ className = '' }) {
+  const { theme, next } = useThemeHook();
+  const icon = theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'monitor';
+  const label = `ธีม: ${THEME_LABEL[theme]} (แตะเพื่อเปลี่ยน)`;
+  return (
+    <button type="button" className={`icon-btn theme-btn ${className}`} onClick={next} title={label} aria-label={label}>
+      <Icon name={icon} size={18} />
+    </button>
+  );
+}
