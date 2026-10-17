@@ -1368,7 +1368,31 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
   .qline { grid-template-columns: minmax(0, 1fr); }
 }
 .qline-btns .step-back { flex: 1; min-height: 46px; border-radius: 12px; color: var(--muted); }
-.poi-options { display: flex; flex-direction: column; gap: 6px; }
-.poi-options .perm-item { align-items: flex-start; }
-.pay-test-amount { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0; }
-.pay-test-amount .input { width: 90px; min-height: 36px; }
+
+/* settings: shop QR format — two compact choice cards */
+.poi { display: flex; flex-direction: column; gap: 8px; }
+.poi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 480px) { .poi-grid { grid-template-columns: minmax(0, 1fr); } }
+.poi-choice { display: flex; align-items: flex-start; gap: 10px; padding: 12px; text-align: left; border: 1.5px solid var(--line-2);
+  border-radius: 12px; background: var(--surface); color: var(--ink); min-width: 0; }
+.poi-choice.on { border-color: var(--selected); background: var(--primary-50); }
+.poi-dot { flex-shrink: 0; width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--line-2); background: var(--surface); }
+.poi-choice.on .poi-dot { border-color: var(--primary); background: radial-gradient(circle, var(--primary) 0 45%, var(--surface) 50%); }
+.poi-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.poi-title { font-weight: 600; font-size: 14px; line-height: 1.35; }
+.poi-sub { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.poi-tag { align-self: flex-start; margin-top: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--good-50); color: var(--good); }
+
+/* settings: the ฿1 test QR */
+.pay-card > p { margin: 0; }
+.pay-test { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px dashed var(--line-2); border-radius: 12px; }
+.pay-test-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pay-test-amount { display: inline-flex; align-items: center; gap: 6px; }
+.pay-test-amount .input { width: 84px; min-height: 38px; text-align: center; }
+.pay-test-body { display: flex; align-items: center; gap: 14px; }
+.pay-test-body img { flex-shrink: 0; border-radius: 8px; background: #fff; }
+.pay-test-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--ink-2); }
+@media (max-width: 480px) {
+  .pay-test-body { flex-direction: column; align-items: center; }
+  .pay-test-steps { align-self: stretch; }
+}

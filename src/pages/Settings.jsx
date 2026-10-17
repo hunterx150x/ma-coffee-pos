@@ -443,20 +443,28 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
           )}
           {pay.shopQr && check && !check.ok && <div className="field-error">{check.error}</div>}
           {check?.ok && (
-            <Field label="รูปแบบ QR ที่สร้าง" hint="ถ้าสแกนแล้วเห็นยอดแต่กดโอนไม่ผ่าน ให้ลองอีกแบบ แล้วทดสอบโอนจริง ฿1 ด้านล่าง">
-              <div className="poi-options">
-                <label className={`perm-item ${pay.qrPoi !== 'dynamic' ? 'on' : ''}`}>
-                  <input type="radio" name="qrpoi" checked={pay.qrPoi !== 'dynamic'} onChange={() => set({ qrPoi: 'static' })} />
-                  <span className="check-box check-radio">{pay.qrPoi !== 'dynamic' && <Icon name="check" size={14} stroke={3} />}</span>
-                  <span><b>แบบที่ 1 · QR คงที่ + ใส่ยอด</b> (แนะนำสำหรับ K SHOP)<br /><span className="muted small">ใช้ QR เดิมของร้าน แค่เติมยอดให้แอปกรอกอัตโนมัติ</span></span>
-                </label>
-                <label className={`perm-item ${pay.qrPoi === 'dynamic' ? 'on' : ''}`}>
-                  <input type="radio" name="qrpoi" checked={pay.qrPoi === 'dynamic'} onChange={() => set({ qrPoi: 'dynamic' })} />
-                  <span className="check-box check-radio">{pay.qrPoi === 'dynamic' && <Icon name="check" size={14} stroke={3} />}</span>
-                  <span><b>แบบที่ 2 · QR ไดนามิก</b><br /><span className="muted small">ตามมาตรฐาน EMVCo สำหรับ QR ที่ระบุยอด (บางธนาคารไม่รับกับ QR ร้านค้าแบบคงที่)</span></span>
-                </label>
+            <div className="poi">
+              <div className="field-label">รูปแบบ QR ที่สร้าง</div>
+              <div className="poi-grid" role="radiogroup" aria-label="รูปแบบ QR ที่สร้าง">
+                {[
+                  { key: 'static', title: 'แบบที่ 1 · คงที่ + ใส่ยอด', sub: 'ใช้ QR เดิมของร้าน แอปกรอกยอดให้', tag: 'แนะนำ K SHOP' },
+                  { key: 'dynamic', title: 'แบบที่ 2 · ไดนามิก', sub: 'มาตรฐาน EMVCo สำหรับ QR ระบุยอด' },
+                ].map((o) => {
+                  const on = (pay.qrPoi === 'dynamic' ? 'dynamic' : 'static') === o.key;
+                  return (
+                    <button key={o.key} type="button" role="radio" aria-checked={on} className={`poi-choice ${on ? 'on' : ''}`} onClick={() => set({ qrPoi: o.key })}>
+                      <span className="poi-dot" aria-hidden="true" />
+                      <span className="poi-text">
+                        <span className="poi-title">{o.title}</span>
+                        <span className="poi-sub">{o.sub}</span>
+                        {o.tag && <span className="poi-tag">{o.tag}</span>}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            </Field>
+              <div className="field-hint">สแกนเห็นยอดแต่กดโอนไม่ผ่าน? เปลี่ยนแบบ กดบันทึก แล้วลองโอน ฿1 จาก QR ทดสอบด้านล่าง</div>
+            </div>
           )}
         </>
       ) : pay.mode === 'account' ? (
@@ -491,16 +499,22 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
       {err && <div className="field-error">{err}</div>}
 
       {preview && (
-        <div className="pay-preview">
-          <img src={preview} alt={`QR ทดสอบ ${baht(testAmount)}`} width="150" height="150" />
-          <div className="small">
+        <div className="pay-test">
+          <div className="pay-test-head">
             <b>QR ทดสอบ</b>
             <label className="pay-test-amount">
-              <span className="muted">ยอด</span>
-              <NumberInput value={testAmount} onChange={setTestAmount} aria-label="ยอดทดสอบ" />
-              <span className="muted">บาท</span>
+              <span className="muted small">ยอด</span>
+              <NumberInput value={testAmount} onChange={setTestAmount} aria-label="ยอดทดสอบ (บาท)" />
+              <span className="muted small">บาท</span>
             </label>
-            <div className="muted">สแกนแล้ว<b>ลองโอนจริง ฿1</b> ให้จบรายการ แล้วเช็กใน K SHOP ว่าเงินเข้า — ถ้าโอนไม่ผ่าน ให้เปลี่ยนรูปแบบ QR ด้านบน กดบันทึก แล้วลองใหม่</div>
+          </div>
+          <div className="pay-test-body">
+            <img src={preview} alt={`QR ทดสอบ ${baht(testAmount)}`} width="150" height="150" />
+            <ol className="pay-test-steps small">
+              <li>สแกนด้วยแอปธนาคาร ต้องเห็นชื่อร้านและยอด {baht(Number(testAmount) || 0)}</li>
+              <li><b>กดโอนจริงให้จบรายการ</b> แล้วเช็กใน K SHOP ว่าเงินเข้า</li>
+              <li>ถ้าโอนไม่ผ่าน เปลี่ยนรูปแบบ QR ด้านบน กดบันทึก แล้วลองใหม่</li>
+            </ol>
           </div>
         </div>
       )}
