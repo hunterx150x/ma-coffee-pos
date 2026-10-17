@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme as useThemeHook, THEME_LABEL } from '../theme.js';
+import { useSound } from '../sound.js';
 import { presetRange } from '../utils.js';
 
 // ---------- icons (stroke icons, 24px grid) ----------
@@ -49,6 +50,8 @@ const PATHS = {
   sun: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4',
   moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
   monitor: 'M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8 20h8 M12 16v4',
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9 M13.7 21a2 2 0 0 1-3.4 0',
+  bellOff: 'M13.7 21a2 2 0 0 1-3.4 0 M18.6 13A17.9 17.9 0 0 1 18 8 M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14 M18 8a6 6 0 0 0-9.3-5 M2 2l20 20',
   crop: 'M6 2v14a2 2 0 0 0 2 2h14 M18 22V8a2 2 0 0 0-2-2H2',
 };
 
@@ -112,7 +115,8 @@ export function UiProvider({ children }) {
   const toast = useCallback((message, type = 'success') => {
     const id = ++idRef.current;
     setToasts((t) => [...t, { id, message, type }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), type === 'error' ? 4500 : 2500);
+    // 'alert' = a new customer order / payment notice: stays up long enough to be seen across the bar
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), type === 'alert' ? 8000 : type === 'error' ? 4500 : 2500);
   }, []);
 
   const confirm = useCallback((opts) => new Promise((resolve) => {
@@ -130,7 +134,7 @@ export function UiProvider({ children }) {
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>
-            <Icon name={t.type === 'error' ? 'alert' : 'check'} size={18} />
+            <Icon name={t.type === 'error' ? 'alert' : t.type === 'alert' ? 'bell' : 'check'} size={18} />
             <span>{t.message}</span>
           </div>
         ))}
@@ -293,13 +297,27 @@ export function SweetDetail({ parts }) {
 const nfSweet = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 
 /** Light / dark / follow-the-device switch (cycles on tap). */
-export function ThemeToggle({ className = '' }) {
+export function ThemeToggle({ className = '', text = false }) {
   const { theme, next } = useThemeHook();
   const icon = theme === 'dark' ? 'moon' : theme === 'light' ? 'sun' : 'monitor';
   const label = `ธีม: ${THEME_LABEL[theme]} (แตะเพื่อเปลี่ยน)`;
   return (
-    <button type="button" className={`icon-btn theme-btn ${className}`} onClick={next} title={label} aria-label={label}>
-      <Icon name={icon} size={18} />
+    <button type="button" className={`${text ? 'tool-btn' : 'icon-btn'} theme-btn ${className}`} onClick={next} title={label} aria-label={label}>
+      <Icon name={icon} size={18} />{text && <span>{THEME_LABEL[theme]}</span>}
+    </button>
+  );
+}
+
+/** Sound alerts for new customer orders: on / off, and a dot while the browser still blocks audio. */
+export function SoundToggle({ className = '', text = false }) {
+  const { state, toggle } = useSound();
+  const label = state === 'off' ? 'เสียงแจ้งเตือนคิวใหม่: ปิด (แตะเพื่อเปิด)'
+    : state === 'locked' ? 'แตะเพื่อเปิดเสียงแจ้งเตือนคิวใหม่' : 'เสียงแจ้งเตือนคิวใหม่: เปิด (แตะเพื่อปิด)';
+  return (
+    <button type="button" className={`${text ? 'tool-btn' : 'icon-btn'} sound-btn sound-${state} ${className}`} onClick={toggle} title={label} aria-label={label}>
+      <Icon name={state === 'off' ? 'bellOff' : 'bell'} size={18} />
+      {text && <span>{state === 'off' ? 'เสียงปิด' : state === 'locked' ? 'แตะเปิดเสียง' : 'เสียงเปิด'}</span>}
+      {state === 'locked' && <span className="sound-dot" aria-hidden="true" />}
     </button>
   );
 }

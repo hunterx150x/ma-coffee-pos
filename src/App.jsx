@@ -3,7 +3,8 @@ import { api, getToken, setToken } from './api.js';
 import { initial } from './utils.js';
 import { onRealtime } from './realtime.js';
 import { hasPerm, ROLES } from '../shared/permissions.js';
-import { Icon, Loading, Modal, Field, useUi, ThemeToggle } from './components/ui.jsx';
+import { Icon, Loading, Modal, Field, useUi, ThemeToggle, SoundToggle } from './components/ui.jsx';
+import { playSound } from './sound.js';
 import Login from './pages/Login.jsx';
 import Pos from './pages/Pos.jsx';
 import Queue from './pages/Queue.jsx';
@@ -56,6 +57,8 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [openQueues, setOpenQueues] = useState(0);
+  const { toast } = useUi();
+  const alertToast = (m) => toast(m, 'alert');
 
   useEffect(() => {
     if (!getToken()) return;
@@ -70,6 +73,40 @@ export default function App() {
     window.addEventListener('pos:logout', out);
     return () => window.removeEventListener('pos:logout', out);
   }, []);
+
+  // Ring and tell the staff when a customer orders through the QR menu (or reports a payment).
+  useEffect(() => {
+    if (!user || !hasPerm(user, 'queue')) return undefined;
+    let unseen = 0;
+    const baseTitle = document.title;
+    const flash = (text) => {
+      if (document.visibilityState === 'visible') return;
+      unseen += 1;
+      document.title = `🔔 (${unseen}) ${text}`;
+    };
+    const seen = () => {
+      if (document.visibilityState !== 'visible' || !unseen) return;
+      unseen = 0;
+      document.title = baseTitle;
+    };
+    const off = onRealtime('queues', (d) => {
+      if (d.created && d.source === 'customer') {
+        playSound('order');
+        alertToast(`คิวใหม่ #${d.queueNo} ${d.name || ''} · ${d.cups || ''} แก้ว (สั่งผ่าน QR)`);
+        flash(`คิวใหม่ #${d.queueNo}`);
+      } else if (d.claim) {
+        playSound('notice');
+        alertToast(d.claim === 'cash' ? `💵 คิว #${d.queueNo} ${d.name || ''} จะชำระเงินสด` : `📱 คิว #${d.queueNo} ${d.name || ''} แจ้งโอนแล้ว`);
+        flash(`คิว #${d.queueNo} แจ้งชำระ`);
+      }
+    });
+    document.addEventListener('visibilitychange', seen);
+    return () => {
+      off();
+      document.removeEventListener('visibilitychange', seen);
+      document.title = baseTitle;
+    };
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Badge with today's unpaid queues, refreshed in the background.
   useEffect(() => {
@@ -119,7 +156,10 @@ export default function App() {
               <div className="brand-name">MA Coffee</div>
               <div className="brand-sub">ระบบขายหน้าร้าน</div>
             </div>
-            <ThemeToggle className="brand-theme" />
+          </div>
+          <div className="sidebar-tools">
+            {hasPerm(user, 'queue') && <SoundToggle text />}
+            <ThemeToggle text />
           </div>
           <nav className="nav">
             {allowed.map((r) => (
@@ -151,6 +191,7 @@ export default function App() {
           <header className="topbar">
             <button className="icon-btn" onClick={() => setNavOpen(true)} aria-label="เปิดเมนู"><Icon name="menu" /></button>
             <div className="topbar-title">{current?.label}</div>
+            {hasPerm(user, 'queue') && <SoundToggle />}
             <ThemeToggle />
             <div className="avatar avatar-sm">{initial(user.name)}</div>
           </header>

@@ -290,7 +290,7 @@ app.post('/api/public/queues/:token/paid', h((req) => {
     q.updatedAt = now();
     markDirty('queues', q.createdAt);
     save();
-    events.broadcast('queues', { id: q.id, status: q.status });
+    events.broadcast('queues', { id: q.id, status: q.status, claim: 'cash', queueNo: q.queueNo, name: q.name });
     audit(req, { category: 'คิว', action: 'ลูกค้าเลือกชำระเงินสด', detail: `คิว ${q.queueNo} ${q.name} · ฿${q.total}`, actor: `ลูกค้า: ${q.name}` });
     save();
     return { ok: true };
@@ -309,7 +309,7 @@ app.post('/api/public/queues/:token/paid', h((req) => {
   q.updatedAt = now();
   markDirty('queues', q.createdAt);
   save();
-  events.broadcast('queues', { id: q.id, status: q.status });
+  events.broadcast('queues', { id: q.id, status: q.status, claim: 'transfer', queueNo: q.queueNo, name: q.name });
   audit(req, { category: 'คิว', action: 'ลูกค้าแจ้งโอนเงิน', detail: `คิว ${q.queueNo} ${q.name} · ฿${q.total}${slipId ? ' (แนบสลิป)' : ''}`, actor: `ลูกค้า: ${q.name}` });
   save();
   return { ok: true };
@@ -1081,7 +1081,8 @@ function createQueue({ name, note, items, customer, staffId, staffName, source =
   };
   db.queues.push(queue);
   save();
-  events.broadcast('queues', { id: queue.id, status: queue.status });
+  // "created" lets open staff screens ring for a new customer order
+  events.broadcast('queues', { id: queue.id, status: queue.status, created: true, source: queue.source, queueNo: queue.queueNo, name: queue.name, cups: queue.cups });
   return queue;
 }
 
