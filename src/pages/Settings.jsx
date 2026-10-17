@@ -383,6 +383,7 @@ const OTHER_BANK = '__other__';
 function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
   const [err, setErr] = useState('');
   const [preview, setPreview] = useState(null);
+  const [testAmount, setTestAmount] = useState(1); // a real ฿1 transfer is the only way to know the bank accepts the QR
   const fileRef = useRef(null);
   const [otherBank, setOtherBank] = useState(false);
   // A name saved before the list existed (e.g. "กสิกรไทย") still selects its bank.
@@ -393,11 +394,12 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
 
   useEffect(() => {
     setPreview(null);
+    const amt = Number(testAmount) > 0 ? Number(testAmount) : SAMPLE_AMOUNT;
     const payload = pay.mode === 'shopqr'
-      ? (check?.ok ? thaiQrWithAmount(pay.shopQr, SAMPLE_AMOUNT) : null)
-      : pay.mode === 'account' ? null : promptPayPayload(promptPayId, SAMPLE_AMOUNT);
+      ? (check?.ok ? thaiQrWithAmount(pay.shopQr, amt, { poi: pay.qrPoi === 'dynamic' ? 'dynamic' : 'static' }) : null)
+      : pay.mode === 'account' ? null : promptPayPayload(promptPayId, amt);
     if (payload) QRCode.toDataURL(payload, { margin: 1, width: 200 }).then(setPreview).catch(() => setPreview(null));
-  }, [pay.mode, pay.shopQr, promptPayId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pay.mode, pay.shopQr, pay.qrPoi, promptPayId, testAmount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const upload = async (file) => {
     if (!file) return;
@@ -440,6 +442,22 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
             </div>
           )}
           {pay.shopQr && check && !check.ok && <div className="field-error">{check.error}</div>}
+          {check?.ok && (
+            <Field label="รูปแบบ QR ที่สร้าง" hint="ถ้าสแกนแล้วเห็นยอดแต่กดโอนไม่ผ่าน ให้ลองอีกแบบ แล้วทดสอบโอนจริง ฿1 ด้านล่าง">
+              <div className="poi-options">
+                <label className={`perm-item ${pay.qrPoi !== 'dynamic' ? 'on' : ''}`}>
+                  <input type="radio" name="qrpoi" checked={pay.qrPoi !== 'dynamic'} onChange={() => set({ qrPoi: 'static' })} />
+                  <span className="check-box check-radio">{pay.qrPoi !== 'dynamic' && <Icon name="check" size={14} stroke={3} />}</span>
+                  <span><b>แบบที่ 1 · QR คงที่ + ใส่ยอด</b> (แนะนำสำหรับ K SHOP)<br /><span className="muted small">ใช้ QR เดิมของร้าน แค่เติมยอดให้แอปกรอกอัตโนมัติ</span></span>
+                </label>
+                <label className={`perm-item ${pay.qrPoi === 'dynamic' ? 'on' : ''}`}>
+                  <input type="radio" name="qrpoi" checked={pay.qrPoi === 'dynamic'} onChange={() => set({ qrPoi: 'dynamic' })} />
+                  <span className="check-box check-radio">{pay.qrPoi === 'dynamic' && <Icon name="check" size={14} stroke={3} />}</span>
+                  <span><b>แบบที่ 2 · QR ไดนามิก</b><br /><span className="muted small">ตามมาตรฐาน EMVCo สำหรับ QR ที่ระบุยอด (บางธนาคารไม่รับกับ QR ร้านค้าแบบคงที่)</span></span>
+                </label>
+              </div>
+            </Field>
+          )}
         </>
       ) : pay.mode === 'account' ? (
         <div className="pay-bank">
@@ -474,10 +492,15 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
 
       {preview && (
         <div className="pay-preview">
-          <img src={preview} alt={`ตัวอย่าง QR ${baht(SAMPLE_AMOUNT)}`} width="150" height="150" />
+          <img src={preview} alt={`QR ทดสอบ ${baht(testAmount)}`} width="150" height="150" />
           <div className="small">
-            <b>ตัวอย่าง: บิล {baht(SAMPLE_AMOUNT)}</b>
-            <div className="muted">ลองสแกนด้วยแอปธนาคาร ควรเห็นชื่อร้านและยอด {baht(SAMPLE_AMOUNT)} — ตรวจสอบแล้วกดยกเลิกได้เลย ไม่ต้องโอนจริง</div>
+            <b>QR ทดสอบ</b>
+            <label className="pay-test-amount">
+              <span className="muted">ยอด</span>
+              <NumberInput value={testAmount} onChange={setTestAmount} aria-label="ยอดทดสอบ" />
+              <span className="muted">บาท</span>
+            </label>
+            <div className="muted">สแกนแล้ว<b>ลองโอนจริง ฿1</b> ให้จบรายการ แล้วเช็กใน K SHOP ว่าเงินเข้า — ถ้าโอนไม่ผ่าน ให้เปลี่ยนรูปแบบ QR ด้านบน กดบันทึก แล้วลองใหม่</div>
           </div>
         </div>
       )}

@@ -1368,3 +1368,7 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
   .qline { grid-template-columns: minmax(0, 1fr); }
 }
 .qline-btns .step-back { flex: 1; min-height: 46px; border-radius: 12px; color: var(--muted); }
+.poi-options { display: flex; flex-direction: column; gap: 6px; }
+.poi-options .perm-item { align-items: flex-start; }
+.pay-test-amount { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0; }
+.pay-test-amount .input { width: 90px; min-height: 36px; }

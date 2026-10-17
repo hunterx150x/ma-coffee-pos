@@ -50,13 +50,18 @@ export function checkThaiQr(raw) {
   return { ok: true, info: { ...info, hasAmount: !!get('54'), amount: get('54') ? Number(get('54')) : null } };
 }
 
-/** The shop's QR with this amount filled in (dynamic QR), or as-is without an amount. */
-export function thaiQrWithAmount(raw, amount) {
+/**
+ * The shop's QR with this amount filled in, or as-is without an amount.
+ * poi: 'static' keeps tag 01 = 11 (the shop's own static QR, the app just pre-fills the amount) — needed for
+ *      bill-payment / K SHOP QRs whose fixed Ref1/Ref2 the bank rejects in a "dynamic" payment;
+ *      'dynamic' sets 01 = 12 as EMVCo describes for an amount QR (fine for PromptPay).
+ */
+export function thaiQrWithAmount(raw, amount, { poi = 'static' } = {}) {
   const fields = parseTlv(String(raw || '').trim());
   if (!fields) return null;
   const amt = Number(amount);
   const keep = fields.filter((f) => !['54', '63'].includes(f.id));
-  const out = keep.map((f) => (f.id === '01' ? { ...f, value: amt > 0 ? '12' : '11' } : f));
+  const out = keep.map((f) => (f.id === '01' ? { ...f, value: amt > 0 && poi === 'dynamic' ? '12' : '11' } : f));
   if (amt > 0) out.push({ id: '54', value: amt.toFixed(2) });
   out.sort((a, b) => a.id.localeCompare(b.id)); // EMVCo keeps tags in ascending order (53, 54, 58 ...)
   const p = `${out.map((f) => tlv(f.id, f.value)).join('')}6304`;

@@ -1315,7 +1315,7 @@ app.delete('/api/users/:id', ownerOnly, h((req) => {
 /** What the customer's pay page needs — only the method the shop chose. */
 function publicPayment(s) {
   const p = s.payment || {};
-  if (p.mode === 'shopqr' && p.shopQr) return { mode: 'shopqr', shopQr: p.shopQr, promptPayId: '' };
+  if (p.mode === 'shopqr' && p.shopQr) return { mode: 'shopqr', shopQr: p.shopQr, qrPoi: p.qrPoi === 'dynamic' ? 'dynamic' : 'static', promptPayId: '' };
   if (p.mode === 'account' && p.accountNo) {
     return { mode: 'account', bankName: p.bankName || '', accountNo: p.accountNo, accountName: p.accountName || '', promptPayId: '' };
   }
@@ -1360,6 +1360,7 @@ app.put('/api/settings', need('settings'), h((req, res) => {
     if (mode === 'account' && !str(p.accountNo, 30).replace(/[^0-9]/g, '')) fail(400, 'กรุณากรอกเลขบัญชี');
     s.payment = {
       mode, shopQr,
+      qrPoi: p.qrPoi === 'dynamic' ? 'dynamic' : 'static', // static = keep the shop QR's "11" and only add the amount
       bankName: str(p.bankName, 60), accountNo: str(p.accountNo, 30).replace(/[^0-9-]/g, ''), accountName: str(p.accountName, 80),
     };
   }

@@ -100,7 +100,7 @@ export function downloadCsv(filename, rows) {
  * both with the amount filled in. null for "bank account" (no QR) or when nothing is set up.
  */
 export function transferQrPayload(payment, promptPayId, amount) {
-  if (payment?.mode === 'shopqr') return payment.shopQr ? thaiQrWithAmount(payment.shopQr, amount) : null;
+  if (payment?.mode === 'shopqr') return payment.shopQr ? thaiQrWithAmount(payment.shopQr, amount, { poi: payment.qrPoi === 'dynamic' ? 'dynamic' : 'static' }) : null;
   if (payment?.mode === 'account') return null;
   return promptPayPayload(promptPayId, amount);
 }
