@@ -20,6 +20,15 @@ export default function Settings() {
   const [f, setF] = useState(null);
   const [levels, setLevels] = useState('');
   const fileRef = useRef(null);
+  const [section, setSectionState] = useState(() => {
+    try { return localStorage.getItem(SECTION_KEY) || 'shop'; } catch { return 'shop'; }
+  });
+  const setSection = (k) => {
+    setSectionState(k);
+    try { localStorage.setItem(SECTION_KEY, k); } catch { /* storage unavailable */ }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (s.data) {
@@ -32,7 +41,16 @@ export default function Settings() {
   const ln = { groupId: '', sale: true, void: true, lowStock: true, lead: true, leadGroupId: '', ...(f.line || {}) };
   const setLine = (patch) => setF({ ...f, line: { ...ln, ...patch } });
 
+  // unsaved changes = the form differs from what the server last returned
+  const original = s.data ? JSON.stringify(s.data) : '';
+  const dirty = !!s.data && (JSON.stringify(f) !== original || levels !== (s.data.sweetnessLevels || []).join(', '));
+  const discard = () => {
+    setF({ ...s.data });
+    setLevels((s.data.sweetnessLevels || []).join(', '));
+  };
+
   const save = async () => {
+    setSaving(true);
     try {
       const sweetnessLevels = levels.split(/[,\s]+/).map(Number).filter((n) => Number.isFinite(n));
       const r = await api('/settings', { method: 'PUT', body: { ...f, sweetnessLevels } });
@@ -41,6 +59,8 @@ export default function Settings() {
       toast('บันทึกการตั้งค่าแล้ว');
     } catch (e) {
       toast(e.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -67,54 +87,113 @@ export default function Settings() {
     }
   };
 
+  const sections = SECTIONS.filter((x) => !x.owner || user.role === 'owner');
+  const cur = sections.find((x) => x.key === section) || sections[0];
+
   return (
-    <div>
-      <PageHead title="ตั้งค่าร้าน">
-        <button className="btn btn-primary" onClick={save}><Icon name="check" /> บันทึก</button>
+    <div className="settings">
+      <PageHead title="ตั้งค่าร้าน" sub={cur.desc}>
+        <button className="btn btn-primary" onClick={save} disabled={saving}><Icon name="check" /> {saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
       </PageHead>
-      <div className="settings-grid">
-        <div className="card form">
-          <h3 className="card-title">ข้อมูลร้าน (แสดงบนใบเสร็จ)</h3>
-          <Field label="ชื่อร้าน"><input className="input" value={f.shopName} onChange={(e) => setF({ ...f, shopName: e.target.value })} /></Field>
-          <Field label="ที่อยู่"><input className="input" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
-          <Field label="เบอร์โทร" hint="แสดงเป็นปุ่มโทรหาร้านในหน้าคิวของลูกค้าด้วย"><input className="input" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
-          <Field label="ข้อความท้ายใบเสร็จ"><input className="input" value={f.receiptFooter} onChange={(e) => setF({ ...f, receiptFooter: e.target.value })} /></Field>
-        </div>
-        <div className="card form">
-          <h3 className="card-title">การขาย</h3>
-          <Field label="ระดับความหวาน (%)" hint="คั่นด้วยเครื่องหมายจุลภาค เช่น 0, 25, 50, 75, 100">
-            <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
-          </Field>
-          <SweetAmounts levels={levels} amounts={{ ...DEFAULT_SWEET_AMOUNTS, ...(f.sweetAmounts || {}) }}
-            setAmounts={(sweetAmounts) => setF({ ...f, sweetAmounts })} />
-          <Field label="ปริมาณน้ำต่อแก้ว (มล.)" hint="ของเหลวรวมต่อแก้วมาตรฐาน เช่น 180 มล. (6 ออนซ์) — ใช้ตรวจสูตรและปุ่ม “เติมให้ครบ” ในหน้าเมนู (แต่ละเมนูตั้งเองได้)">
-            <NumberInput value={f.cupVolume ?? DEFAULT_CUP_VOLUME} onChange={(v) => setF({ ...f, cupVolume: v })} />
-          </Field>
-        </div>
-        <PaymentCard pay={{ mode: 'promptpay', shopQr: '', bankName: '', accountNo: '', accountName: '', ...(f.payment || {}) }}
-          promptPayId={f.promptPayId} setPromptPayId={(v) => setF({ ...f, promptPayId: v })}
-          setPay={(payment) => setF({ ...f, payment })} />
-        <LoyaltyCard loyalty={{ enabled: true, cupsPerReward: 9, rewardMaxValue: 40, excludeCategoryIds: [], ...(f.loyalty || {}) }}
-          categories={cats.data || []} setLoyalty={(loyalty) => setF({ ...f, loyalty })} />
-        <ContactsCard contacts={f.contacts || {}} setContacts={(contacts) => setF({ ...f, contacts })} />
-        <SelfOrderCard so={{ enabled: true, message: '', ...(f.selfOrder || {}) }} setSo={(so) => setF({ ...f, selfOrder: so })} />
-        <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />
-        {user.role === 'owner' && <LeadsCard />}
-        {user.role === 'owner' && (
-          <div className="card form">
-            <h3 className="card-title">สำรอง / กู้คืนข้อมูล</h3>
-            <p className="muted small">แนะนำให้สำรองข้อมูลเป็นประจำ ไฟล์ประกอบด้วยเมนู สต๊อก บิล ลูกค้า และผู้ใช้ทั้งหมด</p>
-            <div className="form-actions form-actions-left">
-              <button className="btn btn-outline" onClick={backup}><Icon name="download" /> ดาวน์โหลดไฟล์สำรอง</button>
-              <button className="btn btn-ghost btn-danger-text" onClick={() => fileRef.current?.click()}><Icon name="upload" /> กู้คืนจากไฟล์</button>
-              <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { restore(e.target.files[0]); e.target.value = ''; }} />
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="หมวดการตั้งค่า">
+          {sections.map((x) => (
+            <button key={x.key} className={`settings-nav-item ${cur.key === x.key ? 'active' : ''}`} onClick={() => setSection(x.key)}
+              aria-current={cur.key === x.key ? 'page' : undefined}>
+              <Icon name={x.icon} size={18} />
+              <span className="settings-nav-text">
+                <span className="settings-nav-label">{x.label}</span>
+                <span className="settings-nav-desc">{x.short}</span>
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="settings-body">
+          {cur.key === 'shop' && (
+            <>
+              <div className="card form">
+                <h3 className="card-title">ข้อมูลร้าน (แสดงบนใบเสร็จ)</h3>
+                <div className="form-grid">
+                  <Field label="ชื่อร้าน"><input className="input" value={f.shopName} onChange={(e) => setF({ ...f, shopName: e.target.value })} /></Field>
+                  <Field label="เบอร์โทร" hint="แสดงเป็นปุ่มโทรหาร้านในหน้าคิวของลูกค้าด้วย"><input className="input" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
+                </div>
+                <Field label="ที่อยู่"><input className="input" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
+                <Field label="ข้อความท้ายใบเสร็จ"><input className="input" value={f.receiptFooter} onChange={(e) => setF({ ...f, receiptFooter: e.target.value })} /></Field>
+              </div>
+              <ContactsCard contacts={f.contacts || {}} setContacts={(contacts) => setF({ ...f, contacts })} />
+            </>
+          )}
+
+          {cur.key === 'sales' && (
+            <div className="card form">
+              <h3 className="card-title">ความหวาน & ปริมาณต่อแก้ว</h3>
+              <Field label="ระดับความหวาน (%)" hint="คั่นด้วยเครื่องหมายจุลภาค เช่น 0, 25, 50, 75, 100">
+                <input className="input" value={levels} onChange={(e) => setLevels(e.target.value)} />
+              </Field>
+              <SweetAmounts levels={levels} amounts={{ ...DEFAULT_SWEET_AMOUNTS, ...(f.sweetAmounts || {}) }}
+                setAmounts={(sweetAmounts) => setF({ ...f, sweetAmounts })} />
+              <Field label="ปริมาณน้ำต่อแก้ว (มล.)" hint="ของเหลวรวมต่อแก้วมาตรฐาน เช่น 180 มล. (6 ออนซ์) — ใช้ตรวจสูตรและปุ่ม “เติมให้ครบ” ในหน้าเมนู (แต่ละเมนูตั้งเองได้)">
+                <NumberInput value={f.cupVolume ?? DEFAULT_CUP_VOLUME} onChange={(v) => setF({ ...f, cupVolume: v })} />
+              </Field>
             </div>
-          </div>
-        )}
+          )}
+
+          {cur.key === 'payment' && (
+            <PaymentCard pay={{ mode: 'promptpay', shopQr: '', bankName: '', accountNo: '', accountName: '', ...(f.payment || {}) }}
+              promptPayId={f.promptPayId} setPromptPayId={(v) => setF({ ...f, promptPayId: v })}
+              setPay={(payment) => setF({ ...f, payment })} />
+          )}
+
+          {cur.key === 'customers' && (
+            <>
+              <SelfOrderCard so={{ enabled: true, message: '', ...(f.selfOrder || {}) }} setSo={(so) => setF({ ...f, selfOrder: so })} />
+              <LoyaltyCard loyalty={{ enabled: true, cupsPerReward: 9, rewardMaxValue: 40, excludeCategoryIds: [], ...(f.loyalty || {}) }}
+                categories={cats.data || []} setLoyalty={(loyalty) => setF({ ...f, loyalty })} />
+            </>
+          )}
+
+          {cur.key === 'line' && <LineCard ln={ln} setLine={setLine} status={lineStatus} onSaveFirst={save} />}
+
+          {cur.key === 'system' && (
+            <>
+              <div className="card form">
+                <h3 className="card-title">สำรอง / กู้คืนข้อมูล</h3>
+                <p className="muted small">แนะนำให้สำรองข้อมูลเป็นประจำ ไฟล์ประกอบด้วยเมนู สต๊อก บิล ลูกค้า และผู้ใช้ทั้งหมด</p>
+                <div className="form-actions form-actions-left">
+                  <button className="btn btn-outline" onClick={backup}><Icon name="download" /> ดาวน์โหลดไฟล์สำรอง</button>
+                  <button className="btn btn-ghost btn-danger-text" onClick={() => fileRef.current?.click()}><Icon name="upload" /> กู้คืนจากไฟล์</button>
+                  <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { restore(e.target.files[0]); e.target.value = ''; }} />
+                </div>
+              </div>
+              <LeadsCard />
+            </>
+          )}
+        </div>
       </div>
+
+      {dirty && (
+        <div className="save-bar" role="status">
+          <span><Icon name="edit" size={16} /> มีการแก้ไขที่ยังไม่บันทึก</span>
+          <div className="save-bar-actions">
+            <button className="btn btn-ghost" onClick={discard} disabled={saving}>ยกเลิก</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}><Icon name="check" /> {saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const SECTION_KEY = 'ma_settings_section';
+const SECTIONS = [
+  { key: 'shop', label: 'ร้านค้า', short: 'ข้อมูลร้าน · ช่องทางติดต่อ', icon: 'settings', desc: 'ชื่อร้าน ที่อยู่ ใบเสร็จ และช่องทางติดต่อที่ลูกค้าเห็น' },
+  { key: 'sales', label: 'การขาย', short: 'ความหวาน · ปริมาณต่อแก้ว', icon: 'products', desc: 'ระดับความหวาน ปริมาณนมข้น/น้ำเชื่อม และปริมาณน้ำต่อแก้ว (ใช้ตัดสต๊อก)' },
+  { key: 'payment', label: 'รับเงิน', short: 'QR ร้าน · พร้อมเพย์ · เลขบัญชี', icon: 'qr', desc: 'วิธีที่ลูกค้าโอนเงิน และ QR ระบุยอดในหน้าชำระเงิน' },
+  { key: 'customers', label: 'ลูกค้า', short: 'สั่งผ่าน QR · สะสมแต้ม', icon: 'customers', desc: 'เมนูให้ลูกค้าสแกนสั่งเอง และบัตรสะสมแต้ม' },
+  { key: 'line', label: 'แจ้งเตือน LINE', short: 'กลุ่มร้าน · สรุปยอด', icon: 'bell', desc: 'ส่งยอดขาย การยกเลิก และวัตถุดิบใกล้หมดเข้า LINE กลุ่มของร้าน' },
+  { key: 'system', label: 'ระบบ', short: 'สำรองข้อมูล · ผู้สนใจ', icon: 'download', desc: 'สำรอง / กู้คืนข้อมูล และรายชื่อผู้สนใจระบบ', owner: true },
+];
 
 function LineCard({ ln, setLine, status, onSaveFirst }) {
   const { toast } = useUi();
