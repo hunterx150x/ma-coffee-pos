@@ -1442,3 +1442,4 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .save-bar > span { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--primary-ink); }
 .save-bar-actions { display: flex; gap: 6px; margin-left: auto; }
 @media (max-width: 599px) { .save-bar { bottom: calc(72px + var(--safe-bottom)); } }
+.line-cmds { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }

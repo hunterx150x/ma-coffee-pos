@@ -25,8 +25,20 @@ const lineOn = (kind) => line.lineConfigured() && lineGroupId() && getDb().setti
 const todayTotals = () => buildReport(getDb(), parseRange()).totals;
 const lowStockList = () => getDb().ingredients.filter((i) => i.minQty > 0 && i.quantity <= i.minQty);
 
+// Every bill remembers whether its LINE notification went out, so "บิล" in the group can resend the missed ones
+// (pushes fail e.g. when the free monthly quota runs out; replies to a command are free).
+const setLineStatus = (order, status, error) => {
+  order.line = { status, at: now(), ...(error ? { error: String(error).slice(0, 200) } : {}) };
+  markDirty('orders', order.createdAt);
+  save();
+};
 function notifySale(order, crossedLow) {
-  if (lineOn('sale')) line.pushQuiet(lineGroupId(), [line.saleFlex(order, todayTotals(), getDb().settings.shopName)]);
+  if (lineOn('sale')) {
+    order.line = { status: 'pending', at: now() };
+    line.push(lineGroupId(), [line.saleFlex(order, todayTotals(), getDb().settings.shopName)])
+      .then(() => setLineStatus(order, 'sent'))
+      .catch((e) => setLineStatus(order, 'failed', e.message));
+  }
   if (crossedLow.length && lineOn('lowStock')) line.pushQuiet(lineGroupId(), [line.lowStockFlex(crossedLow)]);
 }
 
@@ -53,8 +65,42 @@ app.post('/api/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, 
     // Commands only answer in the shop's own group (replies are free, no quota used).
     const text = ev.type === 'message' && ev.message?.type === 'text' ? ev.message.text.trim() : '';
     if (!text || groupId !== lineGroupId() || !ev.replyToken) continue;
+    const say = (messages) => line.reply(ev.replyToken, messages).catch((e) => console.error('LINE reply:', e.message));
     if (/^(ยอด|ยอดวันนี้|สรุป|สรุปยอด)$/.test(text)) {
-      line.reply(ev.replyToken, [line.summaryFlex(buildReport(db, parseRange()), db.settings.shopName)]).catch((e) => console.error(e.message));
+      say([line.summaryFlex(buildReport(db, parseRange()), db.settings.shopName)]);
+    } else if (/^ยอดเมื่อวาน$/.test(text)) {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const y = localDate(d);
+      say([line.summaryFlex(buildReport(db, parseRange(y, y)), db.settings.shopName, { label: 'เมื่อวาน', dateText: line.thDay(y) })]);
+    } else if (/^บิล$/.test(text)) {
+      // bills from yesterday on whose notification failed (or never finished), oldest first
+      const since = new Date(); since.setDate(since.getDate() - 1); since.setHours(0, 0, 0, 0);
+      const stale = Date.now() - 60 * 1000;
+      const missed = db.orders.filter((o) => o.status === 'paid' && new Date(o.createdAt) >= since
+        && (o.line?.status === 'failed' || (o.line?.status === 'pending' && new Date(o.line.at).getTime() < stale)));
+      if (!missed.length) {
+        say([{ type: 'text', text: '✅ ไม่มีบิลค้างส่ง — แจ้งเตือนบิลเข้ากลุ่มครบแล้ว' }]);
+      } else {
+        const list = missed.slice(0, 40); // one reply = 5 messages: a heading + 4 carousels of 10
+        const today = todayTotals();
+        const bubbles = list.map((o) => line.saleFlex(o, today, db.settings.shopName).contents);
+        const head = { type: 'text', text: `🧾 บิลที่แจ้งเตือนไม่สำเร็จ ${missed.length} บิล${missed.length > list.length ? ` (แสดง ${list.length} บิลแรก พิมพ์ "บิล" อีกครั้งเพื่อดูต่อ)` : ''}` };
+        line.reply(ev.replyToken, [head, ...line.billsCarousel(bubbles, `บิลค้างส่ง ${list.length} บิล`).slice(0, 4)])
+          .then(() => list.forEach((o) => setLineStatus(o, 'sent')))
+          .catch((e) => console.error('LINE reply:', e.message));
+      }
+    } else if (/^บิลล่าสุด\s*\d*$/.test(text)) {
+      const n = Math.min(10, Math.max(1, Number(text.replace(/\D/g, '')) || 1));
+      const latest = [...db.orders].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, n);
+      if (!latest.length) say([{ type: 'text', text: 'ยังไม่มีบิลในระบบ' }]);
+      else {
+        const today = todayTotals();
+        const bubbles = latest.map((o) => (o.status === 'void' ? line.voidFlex(o, today) : line.saleFlex(o, today, db.settings.shopName)).contents);
+        say(n === 1 ? [{ type: 'flex', altText: `บิลล่าสุด ${latest[0].orderNo}`, contents: bubbles[0] }] : line.billsCarousel(bubbles, `บิลล่าสุด ${latest.length} บิล`));
+      }
+    } else if (/^(คำสั่ง|help|เมนู)$/i.test(text)) {
+      say([{ type: 'text', text: line.commandsText() }]);
     } else if (/^(สต๊อก|สต็อก|stock)$/i.test(text)) {
       const low = lowStockList();
       line.reply(ev.replyToken, [low.length ? line.lowStockFlex(low) : { type: 'text', text: '✅ วัตถุดิบเพียงพอทุกรายการ' }]).catch((e) => console.error(e.message));

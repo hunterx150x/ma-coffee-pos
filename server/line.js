@@ -204,14 +204,15 @@ export function lowStockFlex(items, title = '📦 วัตถุดิบใก
   };
 }
 
-export function summaryFlex(r, shopName) {
+/** label: 'วันนี้' (as of now) or e.g. 'เมื่อวาน' with dateText "26 ต.ค. 69". */
+export function summaryFlex(r, shopName, { label = 'วันนี้', dateText = '' } = {}) {
   const x = r.totals;
   return {
     type: 'flex',
-    altText: `สรุปยอดวันนี้ ${baht(x.sales)} · ${x.orders} บิล`,
+    altText: `สรุปยอด${label} ${baht(x.sales)} · ${x.orders} บิล`,
     contents: {
       type: 'bubble',
-      header: header(`📊 สรุปยอดวันนี้ ${baht(x.sales)}`, `${shopName || 'MA Coffee'} · ${when(new Date().toISOString())}`, C.brown),
+      header: header(`📊 สรุปยอด${label} ${baht(x.sales)}`, `${shopName || 'MA Coffee'} · ${dateText || when(new Date().toISOString())}`, C.brown),
       body: {
         type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '14px',
         contents: [
@@ -233,3 +234,26 @@ export function summaryFlex(r, shopName) {
     },
   };
 }
+
+/** Several bills as swipeable cards: LINE allows 12 bubbles per carousel and 5 messages per reply. */
+export function billsCarousel(bubbles, altText) {
+  const out = [];
+  for (let i = 0; i < bubbles.length && out.length < 5; i += 10) {
+    out.push({ type: 'flex', altText, contents: { type: 'carousel', contents: bubbles.slice(i, i + 10) } });
+  }
+  return out;
+}
+
+export const thDay = (dateStr) => {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  return `${d} ${TH_MONTHS[m - 1]} ${(y + 543) % 100}`;
+};
+
+export const commandsText = () => [
+  '📋 คำสั่งในกลุ่มร้าน (ตอบกลับฟรี ไม่ใช้โควตา)',
+  '• ยอด / ยอดวันนี้ — สรุปยอดวันนี้',
+  '• ยอดเมื่อวาน — สรุปยอดเมื่อวาน',
+  '• บิล — ส่งบิลที่แจ้งเตือนไม่สำเร็จ (เช่น LINE เต็มโควตา)',
+  '• บิลล่าสุด — บิลล่าสุด (พิมพ์ บิลล่าสุด 5 เพื่อดู 5 บิล)',
+  '• สต๊อก — วัตถุดิบใกล้หมด',
+].join('\n');
