@@ -257,3 +257,50 @@ export const commandsText = () => [
   '• บิลล่าสุด — บิลล่าสุด (พิมพ์ บิลล่าสุด 5 เพื่อดู 5 บิล)',
   '• สต๊อก — วัตถุดิบใกล้หมด',
 ].join('\n');
+
+const COMMANDS = [
+  { icon: '📊', cmd: 'ยอดวันนี้', alt: 'หรือ ยอด', desc: 'สรุปยอดขายวันนี้' },
+  { icon: '📅', cmd: 'ยอดเมื่อวาน', desc: 'สรุปยอดขายเมื่อวาน' },
+  { icon: '🧾', cmd: 'บิลล่าสุด', alt: 'บิลล่าสุด 5', desc: 'บิลล่าสุด (ใส่จำนวนได้ สูงสุด 10)' },
+  { icon: '📨', cmd: 'บิล', desc: 'บิลที่แจ้งเตือนไม่สำเร็จ เช่น LINE เต็มโควตา' },
+  { icon: '📦', cmd: 'สต๊อก', desc: 'วัตถุดิบใกล้หมด' },
+];
+
+/** "คำสั่ง": a card listing the group commands, with buttons that post the command for you. */
+export function commandsFlex(shopName) {
+  const item = (c, i) => ({
+    type: 'box', layout: 'horizontal', spacing: 'md', margin: i ? 'lg' : 'none',
+    contents: [
+      { type: 'box', layout: 'vertical', width: '36px', height: '36px', cornerRadius: '18px', backgroundColor: C.bg,
+        justifyContent: 'center', alignItems: 'center', contents: [t(c.icon, { size: 'md', align: 'center', wrap: false })] },
+      { type: 'box', layout: 'vertical', flex: 1, justifyContent: 'center', contents: [
+        { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+          t(c.cmd, { weight: 'bold', size: 'md', flex: 0, wrap: false, color: C.brown }),
+          ...(c.alt ? [t(c.alt, { size: 'xxs', color: C.muted, flex: 0, wrap: false })] : []),
+        ] },
+        t(c.desc, { size: 'xs', color: C.muted }),
+      ] },
+    ],
+  });
+  const btn = (label, text, primary) => ({
+    type: 'button', style: primary ? 'primary' : 'secondary', height: 'sm', color: primary ? C.brown : '#efe4d8',
+    action: { type: 'message', label, text },
+  });
+  return {
+    type: 'flex',
+    altText: commandsText(),
+    contents: {
+      type: 'bubble', size: 'mega',
+      header: header('📋 คำสั่งในกลุ่มร้าน', `${shopName || 'MA Coffee'} · พิมพ์คำสั่ง หรือแตะปุ่มด้านล่าง`, C.brown),
+      body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: COMMANDS.map(item) },
+      footer: {
+        type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', backgroundColor: C.bg,
+        contents: [
+          { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('ยอดวันนี้', 'ยอดวันนี้', true), btn('ยอดเมื่อวาน', 'ยอดเมื่อวาน', true)] },
+          { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('บิลล่าสุด', 'บิลล่าสุด'), btn('บิลค้างส่ง', 'บิล'), btn('สต๊อก', 'สต๊อก')] },
+          t('ตอบกลับฟรี ไม่ใช้โควตา LINE ของร้าน', { size: 'xxs', color: C.muted, align: 'center', margin: 'sm' }),
+        ],
+      },
+    },
+  };
+}

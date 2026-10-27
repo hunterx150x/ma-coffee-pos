@@ -100,7 +100,7 @@ app.post('/api/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, 
         say(n === 1 ? [{ type: 'flex', altText: `บิลล่าสุด ${latest[0].orderNo}`, contents: bubbles[0] }] : line.billsCarousel(bubbles, `บิลล่าสุด ${latest.length} บิล`));
       }
     } else if (/^(คำสั่ง|help|เมนู)$/i.test(text)) {
-      say([{ type: 'text', text: line.commandsText() }]);
+      say([line.commandsFlex(db.settings.shopName)]);
     } else if (/^(สต๊อก|สต็อก|stock)$/i.test(text)) {
       const low = lowStockList();
       line.reply(ev.replyToken, [low.length ? line.lowStockFlex(low) : { type: 'text', text: '✅ วัตถุดิบเพียงพอทุกรายการ' }]).catch((e) => console.error(e.message));
