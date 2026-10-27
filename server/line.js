@@ -67,7 +67,8 @@ export const validate = (messages) => call('POST', '/v2/bot/message/validate/pus
 export const groupSummary = (groupId) => call('GET', `/v2/bot/group/${groupId}/summary`);
 
 // ---------- flex builders ----------
-const C = { brown: '#6f4e37', ink: '#2b1d14', muted: '#8a7768', green: '#2e7d52', red: '#c0392b', amber: '#b26a00', bg: '#f6f1eb' };
+// lookup = cards someone asked for with a command (not the live notification), so they look different in the chat
+const C = { lookup: '#3f51a3', past: '#2a6f97', brown: '#6f4e37', ink: '#2b1d14', muted: '#8a7768', green: '#2e7d52', red: '#c0392b', amber: '#b26a00', bg: '#f6f1eb' };
 const nf = new Intl.NumberFormat('th-TH', { maximumFractionDigits: 2 });
 const baht = (n) => `฿${nf.format(Number(n) || 0)}`;
 const pad = (n) => String(n).padStart(2, '0');
@@ -94,7 +95,8 @@ function header(title, subtitle, color) {
 }
 
 /** New paid bill + today's running totals. */
-export function saleFlex(order, today, shopName) {
+/** lookup: true = asked for with "บิลล่าสุด" (indigo header + "ดูย้อนหลัง"), not the live sale notification. */
+export function saleFlex(order, today, shopName, { lookup = false } = {}) {
   const items = order.items.flatMap((l, i) => {
     const opts = [
       l.sweetness != null ? `หวาน ${l.sweetness}%` : '',
@@ -120,7 +122,7 @@ export function saleFlex(order, today, shopName) {
     altText: `ขายแล้ว ${baht(order.total)} · บิล ${order.orderNo} · วันนี้ ${baht(today.sales)}`,
     contents: {
       type: 'bubble', size: 'mega',
-      header: header(`🧾 ขายแล้ว ${baht(order.total)}`, `${shopName || 'MA Coffee'} · บิล ${order.orderNo} · ${when(order.createdAt)}`, C.brown),
+      header: header(`${lookup ? '🔎 ดูย้อนหลัง · ' : '🧾 ขายแล้ว '}${baht(order.total)}`, `${shopName || 'MA Coffee'} · บิล ${order.orderNo} · ${when(order.createdAt)}`, lookup ? C.lookup : C.brown),
       body: {
         type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '14px',
         contents: [
@@ -205,14 +207,14 @@ export function lowStockFlex(items, title = '📦 วัตถุดิบใก
 }
 
 /** label: 'วันนี้' (as of now) or e.g. 'เมื่อวาน' with dateText "26 ต.ค. 69". */
-export function summaryFlex(r, shopName, { label = 'วันนี้', dateText = '' } = {}) {
+export function summaryFlex(r, shopName, { label = 'วันนี้', dateText = '', color } = {}) {
   const x = r.totals;
   return {
     type: 'flex',
     altText: `สรุปยอด${label} ${baht(x.sales)} · ${x.orders} บิล`,
     contents: {
       type: 'bubble',
-      header: header(`📊 สรุปยอด${label} ${baht(x.sales)}`, `${shopName || 'MA Coffee'} · ${dateText || when(new Date().toISOString())}`, C.brown),
+      header: header(`📊 สรุปยอด${label} ${baht(x.sales)}`, `${shopName || 'MA Coffee'} · ${dateText || when(new Date().toISOString())}`, color || C.brown),
       body: {
         type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '14px',
         contents: [
@@ -304,3 +306,5 @@ export function commandsFlex(shopName) {
     },
   };
 }
+
+export const COLORS = { past: C.past, lookup: C.lookup, brown: C.brown };

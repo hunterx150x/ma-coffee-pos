@@ -72,7 +72,7 @@ app.post('/api/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, 
       const d = new Date();
       d.setDate(d.getDate() - 1);
       const y = localDate(d);
-      say([line.summaryFlex(buildReport(db, parseRange(y, y)), db.settings.shopName, { label: 'เมื่อวาน', dateText: line.thDay(y) })]);
+      say([line.summaryFlex(buildReport(db, parseRange(y, y)), db.settings.shopName, { label: 'เมื่อวาน', dateText: line.thDay(y), color: line.COLORS.past })]);
     } else if (/^บิล$/.test(text)) {
       // bills from yesterday on whose notification failed (or never finished), oldest first
       const since = new Date(); since.setDate(since.getDate() - 1); since.setHours(0, 0, 0, 0);
@@ -96,7 +96,8 @@ app.post('/api/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, 
       if (!latest.length) say([{ type: 'text', text: 'ยังไม่มีบิลในระบบ' }]);
       else {
         const today = todayTotals();
-        const bubbles = latest.map((o) => (o.status === 'void' ? line.voidFlex(o, today) : line.saleFlex(o, today, db.settings.shopName)).contents);
+        // looked up on request: indigo header so it isn't mistaken for a new sale (voids stay red)
+        const bubbles = latest.map((o) => (o.status === 'void' ? line.voidFlex(o, today) : line.saleFlex(o, today, db.settings.shopName, { lookup: true })).contents);
         say(n === 1 ? [{ type: 'flex', altText: `บิลล่าสุด ${latest[0].orderNo}`, contents: bubbles[0] }] : line.billsCarousel(bubbles, `บิลล่าสุด ${latest.length} บิล`));
       }
     } else if (/^(คำสั่ง|help|เมนู)$/i.test(text)) {
