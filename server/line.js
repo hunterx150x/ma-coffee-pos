@@ -256,6 +256,8 @@ export const commandsText = () => [
   '• ยอด / ยอดวันนี้ — สรุปยอดวันนี้',
   '• ยอดเมื่อวาน — สรุปยอดเมื่อวาน',
   '• บิล — ส่งบิลที่แจ้งเตือนไม่สำเร็จ (เช่น LINE เต็มโควตา)',
+  '• สรุปยอด วันนี้ / สัปดาห์นี้ / เดือนนี้ — ใบสรุปยอดขาย',
+  '• บิลวันนี้ / บิลเมื่อวาน — บิลทั้งหมดของวัน',
   '• บิลล่าสุด — บิลล่าสุด (พิมพ์ บิลล่าสุด 5 เพื่อดู 5 บิล)',
   '• สต๊อก — วัตถุดิบใกล้หมด',
 ].join('\n');
@@ -263,7 +265,9 @@ export const commandsText = () => [
 const COMMANDS = [
   { icon: '📊', cmd: 'ยอดวันนี้', alt: 'หรือ ยอด', desc: 'สรุปยอดขายวันนี้' },
   { icon: '📅', cmd: 'ยอดเมื่อวาน', desc: 'สรุปยอดขายเมื่อวาน' },
-  { icon: '🧾', cmd: 'บิลล่าสุด', alt: 'บิลล่าสุด 5', desc: 'บิลล่าสุด (ใส่จำนวนได้ สูงสุด 10)' },
+  { icon: '🗒️', cmd: 'สรุปยอด เดือนนี้', alt: 'วันนี้ / สัปดาห์นี้', desc: 'ใบสรุปยอดขาย แยกตามเมนู เงินสด/โอน กำไร' },
+  { icon: '🧾', cmd: 'บิลวันนี้', alt: 'บิลเมื่อวาน', desc: 'บิลทั้งหมดของวัน เป็นรายการ' },
+  { icon: '🔎', cmd: 'บิลล่าสุด', alt: 'บิลล่าสุด 5', desc: 'บิลล่าสุด (ใส่จำนวนได้ สูงสุด 10)' },
   { icon: '📨', cmd: 'บิล', desc: 'บิลที่แจ้งเตือนไม่สำเร็จ เช่น LINE เต็มโควตา' },
   { icon: '📦', cmd: 'สต๊อก', desc: 'วัตถุดิบใกล้หมด' },
 ];
@@ -299,7 +303,9 @@ export function commandsFlex(shopName) {
         type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', backgroundColor: C.bg,
         contents: [
           { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('ยอดวันนี้', 'ยอดวันนี้', true), btn('ยอดเมื่อวาน', 'ยอดเมื่อวาน', true)] },
-          { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('บิลล่าสุด', 'บิลล่าสุด'), btn('บิลค้างส่ง', 'บิล'), btn('สต๊อก', 'สต๊อก')] },
+          { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('สรุปสัปดาห์', 'สรุปยอด สัปดาห์นี้'), btn('สรุปเดือน', 'สรุปยอด เดือนนี้')] },
+          { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('บิลวันนี้', 'บิลวันนี้'), btn('บิลล่าสุด', 'บิลล่าสุด'), btn('บิลค้างส่ง', 'บิล')] },
+          { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [btn('สต๊อก', 'สต๊อก')] },
           t('ตอบกลับฟรี ไม่ใช้โควตา LINE ของร้าน', { size: 'xxs', color: C.muted, align: 'center', margin: 'sm' }),
         ],
       },
@@ -308,3 +314,137 @@ export function commandsFlex(shopName) {
 }
 
 export const COLORS = { past: C.past, lookup: C.lookup, brown: C.brown };
+
+// ---------- bill lists & the sales sheet (asked for with a command) ----------
+const C_SHEET = '#22766b';
+const PAY = { cash: 'เงินสด', transfer: 'โอน', app: 'แอพ' };
+const APP_NAME = { grab: 'Grab', lineman: 'LINE MAN' };
+const hhmm = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const cut = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+function billRow(o, i) {
+  const voided = o.status === 'void';
+  const pay = o.paymentMethod === 'app' ? APP_NAME[o.channel] || 'แอพ' : PAY[o.paymentMethod] || o.paymentMethod;
+  const items = cut(o.items.map((l) => `${l.qty}×${l.name}`).join(', '), 70);
+  return {
+    type: 'box', layout: 'vertical', margin: i ? 'md' : 'none', spacing: 'xs',
+    contents: [
+      { type: 'box', layout: 'horizontal', contents: [
+        t(`${o.orderNo.slice(-3)} · ${hhmm(o.createdAt)} · ${pay}${o.queueNo ? ` · คิว ${o.queueNo}` : ''}`, { flex: 5, size: 'sm', weight: 'bold', color: voided ? C.red : C.ink, wrap: false }),
+        t(voided ? 'ยกเลิก' : baht(o.total), { flex: 2, align: 'end', size: 'sm', weight: 'bold', color: voided ? C.red : C.ink, ...(voided ? {} : {}) }),
+      ] },
+      t(items, { size: 'xxs', color: C.muted, ...(voided ? { decoration: 'line-through' } : {}) }),
+      ...(o.customerName && o.customerName !== 'ลูกค้าทั่วไป' ? [t(o.customerName, { size: 'xxs', color: C.brown })] : []),
+    ],
+  };
+}
+
+/**
+ * All bills of a day as compact list cards (8 per card), first card = the day's totals.
+ * Returns up to 5 messages (LINE's reply limit); `shown` says how many bills made it in.
+ */
+export function billListMessages(orders, { title, dateText, shopName }) {
+  const paid = orders.filter((o) => o.status === 'paid');
+  const sales = paid.reduce((a, o) => a + o.total, 0);
+  const cups = paid.reduce((a, o) => a + o.items.reduce((b, l) => b + l.qty, 0), 0);
+  const by = (m) => paid.filter((o) => o.paymentMethod === m).reduce((a, o) => a + o.total, 0);
+  const summary = {
+    type: 'bubble', size: 'kilo',
+    header: header(`🧾 ${title}`, `${shopName || 'MA Coffee'} · ${dateText}`, C.lookup),
+    body: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px', contents: [
+      t(baht(sales), { size: 'xxl', weight: 'bold', color: C.lookup }),
+      t(`${paid.length} บิล · ${cups} แก้ว${orders.length > paid.length ? ` · ยกเลิก ${orders.length - paid.length}` : ''}`, { size: 'sm', color: C.muted }),
+      sep(),
+      row('เงินสด', baht(by('cash')), { margin: 'md' }),
+      row('เงินโอน', baht(by('transfer'))),
+      ...(by('app') ? [row('ขายในแอพ', baht(by('app')))] : []),
+      t('ปัดซ้ายเพื่อดูทุกบิล →', { size: 'xxs', color: C.muted, margin: 'lg', align: 'end' }),
+    ] },
+  };
+  const PER = 8;
+  const cards = [];
+  for (let i = 0; i < orders.length; i += PER) {
+    const part = orders.slice(i, i + PER);
+    cards.push({
+      type: 'bubble', size: 'kilo',
+      header: { type: 'box', layout: 'vertical', paddingAll: '10px', backgroundColor: C.lookup, contents: [
+        t(`บิลที่ ${i + 1}–${i + part.length} จาก ${orders.length}`, { color: '#ffffff', size: 'sm', weight: 'bold' }),
+      ] },
+      body: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: part.map(billRow) },
+    });
+  }
+  // pack into carousels: ≤ 10 bubbles and well under LINE's 50 KB per message; at most 5 messages
+  const bubbles = [summary, ...cards];
+  const messages = [];
+  let pack = [];
+  const flush = () => { if (pack.length) messages.push({ type: 'flex', altText: `${title} ${paid.length} บิล ${baht(sales)}`, contents: { type: 'carousel', contents: pack } }); pack = []; };
+  for (const b of bubbles) {
+    if (pack.length >= 10 || JSON.stringify([...pack, b]).length > 40000) flush();
+    if (messages.length >= 5) break;
+    pack.push(b);
+  }
+  if (messages.length < 5) flush();
+  const shownCards = messages.reduce((a, m) => a + m.contents.contents.length, 0) - 1;
+  return { messages, shown: Math.min(orders.length, Math.max(0, shownCards) * PER) };
+}
+
+/** "สรุปยอด วันนี้/สัปดาห์นี้/เดือนนี้": the sales sheet as one tall card (menus by category, money, costs). */
+export function salesSheetFlex(r, { label, dateText, shopName, cashExpenses = 0 }) {
+  const x = r.totals;
+  const byCat = new Map();
+  for (const it of r.topItems) {
+    if (!byCat.has(it.category)) byCat.set(it.category, []);
+    byCat.get(it.category).push(it);
+  }
+  const MAX_ROWS = 36;
+  let rows = 0;
+  const menuBlocks = [];
+  for (const c of r.categories) {
+    const items = (byCat.get(c.name) || []).sort((a, b) => b.qty - a.qty);
+    if (!items.length) continue;
+    const room = Math.max(3, Math.min(items.length, MAX_ROWS - rows));
+    const shown = items.slice(0, room);
+    rows += shown.length;
+    menuBlocks.push(
+      row(`${c.name} (${c.qty} แก้ว)`, baht(c.sales), { weight: 'bold', margin: menuBlocks.length ? 'lg' : 'md', color: C_SHEET }),
+      ...shown.map((it) => row(`  ${it.name} ×${it.qty}`, baht(it.sales), { size: 'xs' }, { color: C.muted })),
+      ...(items.length > shown.length ? [t(`  + อีก ${items.length - shown.length} เมนู`, { size: 'xxs', color: C.muted })] : []),
+    );
+  }
+  const money = [
+    sep('lg'),
+    t('ช่องทาง / วิธีชำระ', { size: 'xs', color: C.muted, margin: 'lg' }),
+    ...(r.channels || []).filter((ch) => ch.orders).map((ch) => row(`${ch.name} (${ch.orders} บิล)`, baht(ch.sales), { size: 'xs' })),
+    row('เงินสด', baht(x.cash), { size: 'sm', margin: 'sm' }),
+    row('เงินโอน', baht(x.transfer), { size: 'sm' }),
+    ...(x.app ? [row('ขายในแอพ', baht(x.app), { size: 'sm' })] : []),
+    ...(x.discount ? [row('ส่วนลดรวม', `−${baht(x.discount)}`, { size: 'sm' }, { color: C.green }),
+      ...r.discounts.slice(0, 4).map((d) => row(`  ${cut(d.name, 26)}`, `−${baht(d.amount)}`, { size: 'xxs' }, { color: C.muted }))] : []),
+    sep('lg'),
+    row('ต้นทุนวัตถุดิบ', baht(x.cost), { size: 'sm', margin: 'lg' }, { color: C.muted }),
+    row('กำไรขั้นต้น', baht(x.grossProfit), { size: 'sm', weight: 'bold' }, { color: x.grossProfit >= 0 ? C.green : C.red }),
+    row('ค่าใช้จ่าย', `−${baht(x.expenses)}`, { size: 'sm' }),
+    row(x.netProfit >= 0 ? 'กำไรสุทธิ' : 'ขาดทุนสุทธิ', baht(x.netProfit), { size: 'md', weight: 'bold' }, { color: x.netProfit >= 0 ? C.green : C.red }),
+    sep('lg'),
+    row('เงินสดจากการขาย − ค่าใช้จ่ายเงินสด', baht(x.cash - cashExpenses), { size: 'xs', margin: 'lg' }),
+    ...(r.cashDrawer ? [row('💵 เงินสดในร้านตอนนี้', baht(r.cashDrawer.balance), { size: 'sm', weight: 'bold' }, { color: C.brown })] : []),
+    ...(r.roasts?.length ? [t(`☕ ระดับคั่ว: ${r.roasts.map((y) => `${y.name} ${y.qty}`).join(' · ')}`, { size: 'xxs', color: C.muted, margin: 'md' })] : []),
+    ...(x.voidCount ? [t(`ยกเลิก ${x.voidCount} บิล (${baht(x.voidAmount)})`, { size: 'xxs', color: C.red, margin: 'sm' })] : []),
+  ];
+  return {
+    type: 'flex',
+    altText: `ใบสรุปยอดขาย${label} ${baht(x.sales)} · ${x.orders} บิล`,
+    contents: {
+      type: 'bubble', size: 'giga',
+      header: header(`🧾 ใบสรุปยอดขาย · ${label}`, `${shopName || 'MA Coffee'} · ${dateText}`, C_SHEET),
+      body: { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '16px', contents: [
+        { type: 'box', layout: 'horizontal', contents: [
+          t(baht(x.sales), { size: 'xxl', weight: 'bold', color: C_SHEET, flex: 3 }),
+          t(`${x.orders} บิล\n${x.cups} แก้ว`, { size: 'xs', color: C.muted, align: 'end', flex: 2 }),
+        ] },
+        ...(menuBlocks.length ? menuBlocks : [t('ยังไม่มียอดขายในช่วงนี้', { color: C.muted, margin: 'md' })]),
+        ...money,
+      ] },
+    },
+  };
+}

@@ -100,6 +100,32 @@ app.post('/api/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, 
         const bubbles = latest.map((o) => (o.status === 'void' ? line.voidFlex(o, today) : line.saleFlex(o, today, db.settings.shopName, { lookup: true })).contents);
         say(n === 1 ? [{ type: 'flex', altText: `บิลล่าสุด ${latest[0].orderNo}`, contents: bubbles[0] }] : line.billsCarousel(bubbles, `บิลล่าสุด ${latest.length} บิล`));
       }
+    } else if (/^บิล\s*(วันนี้|เมื่อวาน)$/.test(text)) {
+      const yesterday = /เมื่อวาน/.test(text);
+      const d = new Date();
+      if (yesterday) d.setDate(d.getDate() - 1);
+      const day = localDate(d);
+      const range = parseRange(day, day);
+      const orders = db.orders.filter((o) => inRange(o.createdAt, range)).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      if (!orders.length) say([{ type: 'text', text: `ยังไม่มีบิล${yesterday ? 'เมื่อวาน' : 'วันนี้'} (${line.thDay(day)})` }]);
+      else {
+        const { messages, shown } = line.billListMessages(orders, { title: yesterday ? 'บิลเมื่อวาน' : 'บิลวันนี้', dateText: line.thDay(day), shopName: db.settings.shopName });
+        say(shown < orders.length && messages.length < 5
+          ? [...messages, { type: 'text', text: `แสดง ${shown} จาก ${orders.length} บิล — ดูทั้งหมดได้ที่เมนูประวัติการขายบนเว็บ` }]
+          : messages);
+      }
+    } else if (/^สรุปยอด\s*(วันนี้|เมื่อวาน|สัปดาห์นี้|เดือนนี้)$/.test(text)) {
+      const which = text.match(/(วันนี้|เมื่อวาน|สัปดาห์นี้|เดือนนี้)$/)[1];
+      const d = new Date();
+      let from = localDate(d);
+      let to = from;
+      if (which === 'เมื่อวาน') { d.setDate(d.getDate() - 1); from = to = localDate(d); }
+      if (which === 'สัปดาห์นี้') { const s0 = new Date(d); s0.setDate(d.getDate() - ((d.getDay() + 6) % 7)); from = localDate(s0); } // Monday start, like Reports
+      if (which === 'เดือนนี้') from = localDate(new Date(d.getFullYear(), d.getMonth(), 1));
+      const range = parseRange(from, to);
+      const cashExpenses = db.expenses.filter((e) => e.paidFromCash && e.date >= range.from && e.date <= range.to).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+      const dateText = from === to ? line.thDay(from) : `${line.thDay(from)} – ${line.thDay(to)}`;
+      say([line.salesSheetFlex(buildReport(db, range), { label: which, dateText, shopName: db.settings.shopName, cashExpenses })]);
     } else if (/^(คำสั่ง|help|เมนู)$/i.test(text)) {
       say([line.commandsFlex(db.settings.shopName)]);
     } else if (/^(สต๊อก|สต็อก|stock)$/i.test(text)) {
