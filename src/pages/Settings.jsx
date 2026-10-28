@@ -8,6 +8,7 @@ import { thDateTime } from '../utils.js';
 import QRCode from 'qrcode';
 import { CONTACTS, ContactIcon } from '../components/Contacts.jsx';
 import BankAccount from '../components/BankAccount.jsx';
+import { Select } from '../components/controls.jsx';
 import { checkThaiQr, thaiQrWithAmount } from '../../shared/thaiqr.js';
 import { baht, promptPayPayload } from '../utils.js';
 
@@ -560,11 +561,9 @@ function PaymentCard({ pay, setPay, promptPayId, setPromptPayId }) {
           <p className="muted small">ลูกค้ากรอกเลขบัญชีเพื่อโอนเอง (ไม่มี QR) — ระบบแสดงยอดที่ต้องโอนพร้อมปุ่มคัดลอกเลขบัญชี</p>
           <div className="form-grid">
             <Field label="ธนาคาร">
-              <select className="input" value={bankChoice} onChange={(e) => { setOtherBank(e.target.value === OTHER_BANK); set({ bankName: e.target.value === OTHER_BANK ? '' : e.target.value }); }}>
-                <option value="">— เลือกธนาคาร —</option>
-                {BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
-                <option value={OTHER_BANK}>อื่นๆ (พิมพ์เอง)</option>
-              </select>
+              <Select value={bankChoice} ariaLabel="ธนาคาร" searchPlaceholder="ค้นหาธนาคาร..."
+                options={[{ value: '', label: '— เลือกธนาคาร —' }, ...BANKS.map((b) => ({ value: b, label: b })), { value: OTHER_BANK, label: 'อื่นๆ (พิมพ์เอง)' }]}
+                onChange={(v) => { setOtherBank(v === OTHER_BANK); set({ bankName: v === OTHER_BANK ? '' : v }); }} />
               {bankChoice === OTHER_BANK && (
                 <input className="input other-cat" value={pay.bankName} maxLength={60} autoFocus onChange={(e) => set({ bankName: e.target.value })} placeholder="ชื่อธนาคาร" />
               )}

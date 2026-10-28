@@ -5,11 +5,13 @@ import { Empty, Field, Icon, Loading, Modal, NumberInput, PageHead, useAsync, us
 import { useAuth } from '../App.jsx';
 import StampCard from '../components/StampCard.jsx';
 import { rewardsAvailable } from '../../shared/pricing.js';
+import { usePaged } from '../components/controls.jsx';
 
 export default function Customers() {
   const { toast, confirm } = useUi();
   const [q, setQ] = useState('');
   const list = useAsync(() => api('/customers', { query: { q } }), [q]);
+  const paged = usePaged(list.data || [], 'customers', { resetOn: q });
   const settings = useAsync(() => api('/settings'), []);
   const loyalty = settings.data?.loyalty;
   const [f, setF] = useState(null);
@@ -47,11 +49,13 @@ export default function Customers() {
         <input className="input" placeholder="ค้นหาชื่อ เบอร์โทร LINE ID" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {list.loading && !list.data ? <Loading /> : list.data?.length ? (
+        <>
+        {paged.pager}
         <div className="card table-card">
           <table className="table table-rows-click">
             <thead><tr><th>ชื่อ</th><th className="hide-sm">ติดต่อ</th><th className="num">แต้ม</th><th className="num hide-sm">มา (ครั้ง)</th><th className="num">ยอดซื้อรวม</th><th className="hide-sm">ล่าสุด</th></tr></thead>
             <tbody>
-              {list.data.map((c) => (
+              {paged.pageRows.map((c) => (
                 <tr key={c.id} onClick={() => { setErr(''); setF({ ...c }); }}>
                   <td><b>{c.name}</b>{c.note && <div className="muted small">{c.note}</div>}</td>
                   <td className="hide-sm">{[c.phone, c.lineId && `LINE: ${c.lineId}`].filter(Boolean).join(' · ') || '—'}</td>
@@ -67,6 +71,8 @@ export default function Customers() {
             </tbody>
           </table>
         </div>
+        {paged.pager}
+        </>
       ) : <Empty icon="customers" title="ยังไม่มีลูกค้า" />}
 
       <Modal open={!!f} title={f?.id ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้า'} onClose={() => setF(null)}

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { downloadCsv, num, presetRange, thDate, thTime } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, PageHead, useAsync, useUi } from '../components/ui.jsx';
+import { Pager, Select } from '../components/controls.jsx';
 
 const TOKEN_KEY = 'ma_audit_unlock';
 const PER_PAGE = [50, 100, 200, 500];
@@ -100,25 +101,8 @@ function Log({ token, until, onLock }) {
     }
   };
 
-  const from = d ? (d.page - 1) * d.perPage + 1 : 0;
-  const to = d ? Math.min(d.total, d.page * d.perPage) : 0;
   const pager = d && d.total > 0 && (
-    <div className="pager">
-      <span className="muted small">แสดง {num(from)}–{num(to)} จาก {num(d.total)} รายการ</span>
-      <div className="pager-ctrl">
-        <label className="pager-size">
-          <span className="muted small">ต่อหน้า</span>
-          <select className="input input-auto" value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
-            {PER_PAGE.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-        <button className="icon-btn" disabled={d.page <= 1} onClick={() => setPage(1)} aria-label="หน้าแรก">«</button>
-        <button className="icon-btn" disabled={d.page <= 1} onClick={() => setPage(d.page - 1)} aria-label="ก่อนหน้า"><Icon name="back" size={18} /></button>
-        <span className="pager-page">หน้า {d.page} / {d.pages}</span>
-        <button className="icon-btn" disabled={d.page >= d.pages} onClick={() => setPage(d.page + 1)} aria-label="ถัดไป"><Icon name="next" size={18} /></button>
-        <button className="icon-btn" disabled={d.page >= d.pages} onClick={() => setPage(d.pages)} aria-label="หน้าสุดท้าย">»</button>
-      </div>
-    </div>
+    <Pager page={d.page} pages={d.pages} total={d.total} perPage={d.perPage} sizes={PER_PAGE} onPage={setPage} onPerPage={setPerPage} />
   );
 
   const s = d?.summary;
@@ -133,14 +117,10 @@ function Log({ token, until, onLock }) {
       <div className="card filters">
         <DateRange value={range} onChange={setRange} />
         <div className="moves-filters">
-          <select className="input" value={user} onChange={(e) => setUser(e.target.value)} aria-label="ผู้ใช้">
-            <option value="">ผู้ใช้ทุกคน</option>
-            {(d?.users || []).map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="หมวด">
-            <option value="">ทุกหมวด</option>
-            {(d?.categories || []).map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Select value={user} onChange={setUser} ariaLabel="ผู้ใช้"
+            options={[{ value: '', label: 'ผู้ใช้ทุกคน' }, ...(d?.users || []).map((u) => ({ value: u, label: u }))]} />
+          <Select value={category} onChange={setCategory} ariaLabel="หมวด"
+            options={[{ value: '', label: 'ทุกหมวด' }, ...(d?.categories || []).map((c) => ({ value: c, label: c }))]} />
           <select className="input" value={only} onChange={(e) => setOnly(e.target.value)} aria-label="ระดับ">
             <option value="">ทุกรายการ</option>
             <option value="warn">เฉพาะที่ควรตรวจ (ลบ / ยกเลิก / ล้มเหลว)</option>

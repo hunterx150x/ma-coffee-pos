@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { createPortal } from 'react-dom';
 import { useTheme as useThemeHook, THEME_LABEL } from '../theme.js';
 import { useSound } from '../sound.js';
+import { DateInput } from './controls.jsx';
 import { presetRange } from '../utils.js';
 
 // ---------- icons (stroke icons, 24px grid) ----------
@@ -51,6 +52,7 @@ const PATHS = {
   moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
   monitor: 'M4 4h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8 20h8 M12 16v4',
   bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9 M13.7 21a2 2 0 0 1-3.4 0',
+  calendar: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M16 3v4 M8 3v4 M3 11h18',
   bellOff: 'M13.7 21a2 2 0 0 1-3.4 0 M18.6 13A17.9 17.9 0 0 1 18 8 M6.3 6.3A6 6 0 0 0 6 8c0 7-3 9-3 9h14 M18 8a6 6 0 0 0-9.3-5 M2 2l20 20',
   crop: 'M6 2v14a2 2 0 0 0 2 2h14 M18 22V8a2 2 0 0 0-2-2H2',
 };
@@ -252,11 +254,9 @@ export function DateRange({ value, onChange }) {
         ))}
       </div>
       <div className="daterange-inputs">
-        <input type="date" className="input" value={value.from} max={value.to}
-          onChange={(e) => e.target.value && onChange({ ...value, from: e.target.value })} aria-label="ตั้งแต่วันที่" />
+        <DateInput value={value.from} max={value.to} onChange={(v) => onChange({ ...value, from: v })} ariaLabel="ตั้งแต่วันที่" />
         <span className="muted">ถึง</span>
-        <input type="date" className="input" value={value.to} min={value.from}
-          onChange={(e) => e.target.value && onChange({ ...value, to: e.target.value })} aria-label="ถึงวันที่" />
+        <DateInput value={value.to} min={value.from} onChange={(v) => onChange({ ...value, to: v })} ariaLabel="ถึงวันที่" />
       </div>
     </div>
   );

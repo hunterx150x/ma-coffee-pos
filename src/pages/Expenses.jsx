@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { baht, presetRange, thDate, thDateTime, today } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, Toggle, useAsync, useUi } from '../components/ui.jsx';
 import { EXPENSE_CATEGORIES, OTHER_EXPENSE, isIngredientPurchase } from '../../shared/expenses.js';
+import { DateInput, usePaged } from '../components/controls.jsx';
 
 const CATS = EXPENSE_CATEGORIES;
 // "อื่นๆ" + typed text is saved as the typed text, so it shows up as its own category in reports.
@@ -22,6 +23,10 @@ export default function Expenses() {
   const [c, setC] = useState(null); // capital entry being edited
   const [err, setErr] = useState('');
   const rows = list.data || [];
+  const rangeKey = `${range.from}|${range.to}`;
+  const pagedExp = usePaged(rows, 'expenses', { resetOn: rangeKey });
+  const pagedCap = usePaged(cap.data?.rows || [], 'capital', { resetOn: rangeKey });
+  const pagedCash = usePaged(cash.data?.rows || [], 'cash');
   const total = rows.reduce((s, e) => s + e.amount, 0);
   const purchaseTotal = rows.filter(isIngredientPurchase).reduce((s, e) => s + e.amount, 0);
   const capRange = cap.data?.range.capital || 0;
@@ -125,11 +130,13 @@ export default function Expenses() {
         <>
           <p className="muted small">ยอดเงินสดคำนวณจากการนับเงินครั้งล่าสุด + ขายเงินสด − ค่าใช้จ่ายที่จ่ายจากเงินสดในร้าน ± นำเงินเข้า/ออก (ไม่ขึ้นกับช่วงวันที่ด้านบน) · ควรนับเงินจริงแล้วกด “นับเงิน / ตั้งยอด” เป็นประจำ เช่น ตอนปิดร้าน</p>
           {cash.loading && !cash.data ? <Loading /> : cash.error ? <ErrorBox error={cash.error} onRetry={cash.reload} /> : cash.data.rows.length ? (
+            <>
+            {pagedCash.pager}
             <div className="card table-card">
               <table className="table">
                 <thead><tr><th>เวลา</th><th>รายการ</th><th className="hide-sm">โดย</th><th className="num">จำนวนเงิน</th></tr></thead>
                 <tbody>
-                  {cash.data.rows.map((r, i) => (
+                  {pagedCash.pageRows.map((r, i) => (
                     <tr key={i} className={r.kind === 'set' ? 'cash-row-set' : ''}>
                       <td className="nowrap small">{thDateTime(r.at)}</td>
                       <td><b>{r.label}</b>{r.note && <div className="muted small">{r.note}</div>}</td>
@@ -142,6 +149,8 @@ export default function Expenses() {
                 </tbody>
               </table>
             </div>
+            {pagedCash.pager}
+            </>
           ) : <Empty icon="cash" title="ยังไม่ได้ตั้งยอดเงินสดในร้าน"><button className="btn btn-primary btn-sm" onClick={() => newCash('set')}>นับเงิน / ตั้งยอดเริ่มต้น</button></Empty>}
         </>
       )}
@@ -150,11 +159,13 @@ export default function Expenses() {
         <>
           <p className="muted small">หมวด <b>ค่าวัตถุดิบ</b> บันทึกเงินที่จ่ายซื้อของเข้าร้านได้ แต่ไม่ถูกหักซ้ำในกำไร เพราะรายงานคิดต้นทุนวัตถุดิบตามสูตรเมนูที่ขายไปแล้ว (ยังนับในใบสรุปเงินคงเหลือและเงินทุน) · หมวดอื่นๆ หักเป็นค่าใช้จ่ายดำเนินงานตามปกติ</p>
           {list.loading && !list.data ? <Loading /> : list.error ? <ErrorBox error={list.error} /> : rows.length ? (
+            <>
+            {pagedExp.pager}
             <div className="card table-card">
               <table className="table table-rows-click">
                 <thead><tr><th>วันที่</th><th>รายการ</th><th className="hide-sm">หมวด</th><th className="num">จำนวนเงิน</th></tr></thead>
                 <tbody>
-                  {rows.map((e) => (
+                  {pagedExp.pageRows.map((e) => (
                     <tr key={e.id} onClick={() => { setErr(''); setF(toForm(e)); }}>
                       <td className="nowrap">{thDate(e.date)}</td>
                       <td>{e.description}{e.paidFromCash && <span className="badge badge-cash cash-flag">เงินสดร้าน</span>}<div className="muted small show-sm">{e.category}</div></td>
@@ -165,6 +176,8 @@ export default function Expenses() {
                 </tbody>
               </table>
             </div>
+            {pagedExp.pager}
+            </>
           ) : <Empty icon="expenses" title="ไม่มีค่าใช้จ่ายในช่วงนี้" />}
         </>
       )}
@@ -173,11 +186,13 @@ export default function Expenses() {
         <>
           <p className="muted small">บันทึกเงินที่เจ้าของหรือหุ้นส่วนนำเข้ามาในร้าน เช่น เพิ่มทุน 3,000 บาท — เงินทุนไม่ใช่รายได้ จึงไม่นับเป็นกำไร แต่ใช้หักกับค่าใช้จ่ายเพื่อดูว่าร้านยังต้องจ่ายเองอีกเท่าไหร่</p>
           {cap.loading && !cap.data ? <Loading /> : cap.error ? <ErrorBox error={cap.error} /> : cap.data.rows.length ? (
+            <>
+            {pagedCap.pager}
             <div className="card table-card">
               <table className="table table-rows-click">
                 <thead><tr><th>วันที่</th><th>ผู้ลงทุน</th><th className="hide-sm">หมายเหตุ</th><th className="num">จำนวนเงิน</th></tr></thead>
                 <tbody>
-                  {cap.data.rows.map((x) => (
+                  {pagedCap.pageRows.map((x) => (
                     <tr key={x.id} onClick={() => { setErr(''); setC({ ...x }); }}>
                       <td className="nowrap">{thDate(x.date)}</td>
                       <td>{x.source}<div className="muted small show-sm">{x.note}</div></td>
@@ -188,6 +203,8 @@ export default function Expenses() {
                 </tbody>
               </table>
             </div>
+            {pagedCap.pager}
+            </>
           ) : <Empty icon="expenses" title="ยังไม่มีการเพิ่มทุนในช่วงนี้"><button className="btn btn-outline btn-sm" onClick={newCapital}>เพิ่มเงินทุน</button></Empty>}
         </>
       )}
@@ -203,7 +220,7 @@ export default function Expenses() {
         {f && (
           <div className="form">
             <div className="form-grid">
-              <Field label="วันที่"><input type="date" className="input" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></Field>
+              <Field label="วันที่"><DateInput value={f.date} onChange={(v) => setF({ ...f, date: v })} ariaLabel="วันที่ค่าใช้จ่าย" /></Field>
               <Field label="จำนวนเงิน (บาท) *"><NumberInput value={f.amount} onChange={(v) => setF({ ...f, amount: v })} /></Field>
             </div>
             <Field label="รายละเอียด *"><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} autoFocus /></Field>
@@ -235,7 +252,7 @@ export default function Expenses() {
         {c && (
           <div className="form">
             <div className="form-grid">
-              <Field label="วันที่"><input type="date" className="input" value={c.date} onChange={(e) => setC({ ...c, date: e.target.value })} /></Field>
+              <Field label="วันที่"><DateInput value={c.date} onChange={(v) => setC({ ...c, date: v })} ariaLabel="วันที่ลงทุน" /></Field>
               <Field label="จำนวนเงินทุน (บาท) *"><NumberInput value={c.amount} onChange={(v) => setC({ ...c, amount: v })} autoFocus /></Field>
             </div>
             <Field label="ผู้ลงทุน" hint="เช่น เจ้าของร้าน หรือชื่อหุ้นส่วน">

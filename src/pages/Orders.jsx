@@ -4,6 +4,7 @@ import { useAuth } from '../App.jsx';
 import { baht, payLabel, presetRange, thDateTime, thTime } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Icon, Loading, Modal, PageHead, Tabs, useAsync, useUi, Field } from '../components/ui.jsx';
 import Receipt, { printReceipt } from '../components/Receipt.jsx';
+import { usePaged } from '../components/controls.jsx';
 
 export default function Orders() {
   const { user } = useAuth();
@@ -20,6 +21,7 @@ export default function Orders() {
   const list = orders.data || [];
   const paid = list.filter((o) => o.status === 'paid');
   const total = paid.reduce((s, o) => s + o.total, 0);
+  const paged = usePaged(list, 'orders', { resetOn: [range.from, range.to, q, method].join('|') });
 
   const doVoid = async () => {
     try {
@@ -51,6 +53,8 @@ export default function Orders() {
       </div>
 
       {orders.loading && !orders.data ? <Loading /> : orders.error ? <ErrorBox error={orders.error} onRetry={orders.reload} /> : list.length ? (
+        <>
+        {paged.pager}
         <div className="card table-card">
           <table className="table table-rows-click">
             <thead>
@@ -60,7 +64,7 @@ export default function Orders() {
               </tr>
             </thead>
             <tbody>
-              {list.map((o) => (
+              {paged.pageRows.map((o) => (
                 <tr key={o.id} onClick={() => setOpen(o)} className={o.status === 'void' ? 'row-void' : ''}>
                   <td><b>{o.orderNo}</b>{o.status === 'void' && <span className="badge badge-danger">ยกเลิก</span>}</td>
                   <td>{range.from === range.to ? thTime(o.createdAt) : thDateTime(o.createdAt)}</td>
@@ -73,6 +77,8 @@ export default function Orders() {
             </tbody>
           </table>
         </div>
+        {paged.pager}
+        </>
       ) : <Empty icon="orders" title="ไม่มีบิลในช่วงเวลานี้" />}
 
       <Modal open={!!open} title={`บิล ${open?.orderNo || ''}`} onClose={() => setOpen(null)}

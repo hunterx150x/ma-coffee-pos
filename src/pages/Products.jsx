@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { recipeCost, round2, sweetRatio, DEFAULT_SWEET_AMOUNTS, DEFAULT_CUP_VOLUME } from '../../shared/pricing.js';
 import { ImagePicker, MenuThumb } from '../components/MenuImage.jsx';
+import { Select, usePaged } from '../components/controls.jsx';
 import { baht, discountLabel, num } from '../utils.js';
 import { Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, Toggle, useAsync, useUi } from '../components/ui.jsx';
+
+/** Ingredient options with unit and stock as a hint, for the searchable pickers. */
+const ingOptions = (ings) => ings.map((x) => ({ value: x.id, label: x.name, hint: `${num(x.quantity)} ${x.unit}` }));
 
 export default function Products() {
   const [tab, setTab] = useState('menu');
@@ -101,10 +105,11 @@ function MenuItems({ cats, ings, settings }) {
   const [filter, setFilter] = useState('');
   const [f, setF] = useState(null);
   useEffect(() => { setF(crud.editing ? { ...crud.editing } : null); }, [crud.editing]);
+  const items = (crud.list.data || []).filter((m) => !filter || m.categoryId === filter);
+  const paged = usePaged(items, 'menu-items', { resetOn: filter });
 
   if (crud.list.loading && !crud.list.data) return <Loading />;
   if (crud.list.error) return <ErrorBox error={crud.list.error} onRetry={crud.list.reload} />;
-  const items = (crud.list.data || []).filter((m) => !filter || m.categoryId === filter);
 
   return (
     <>
@@ -121,12 +126,14 @@ function MenuItems({ cats, ings, settings }) {
         </button>
       </div>
       {items.length ? (
+        <>
+        {paged.pager}
         <div className="card table-card">
           <table className="table table-rows-click">
             <thead><tr><th>เมนู</th><th className="num">ราคา</th><th className="num hide-sm">ต้นทุน</th><th className="num hide-sm">กำไร/แก้ว</th>
               <th className="th-sell"><span className="hide-sm">ขาย</span>หน้าร้าน</th><th className="th-sell">นอกสถานที่<span className="hide-sm"> / QR</span></th></tr></thead>
             <tbody>
-              {items.map((m) => {
+              {paged.pageRows.map((m) => {
                 const cost = costOf(m, ings);
                 const cat = cats.find((c) => c.id === m.categoryId);
                 return (
@@ -143,6 +150,8 @@ function MenuItems({ cats, ings, settings }) {
             </tbody>
           </table>
         </div>
+        {paged.pager}
+        </>
       ) : <Empty icon="products" title="ยังไม่มีเมนู" />}
 
       <EditorModal crud={crud} title={f?.id ? 'แก้ไขเมนู' : 'เพิ่มเมนูใหม่'} onSubmit={() => crud.save(f)}>
@@ -155,9 +164,8 @@ function MenuItems({ cats, ings, settings }) {
                 <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus />
               </Field>
               <Field label="ประเภท *">
-                <select className="input" value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}>
-                  {cats.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-                </select>
+                <Select value={f.categoryId} onChange={(v) => setF({ ...f, categoryId: v })} ariaLabel="ประเภทเมนู"
+                  options={cats.map((c) => ({ value: c.id, label: `${c.icon} ${c.name}` }))} />
               </Field>
               <Field label="ราคาขาย (บาท) *">
                 <NumberInput value={f.price} onChange={(v) => setF({ ...f, price: v })} />
@@ -211,9 +219,8 @@ function CostEditor({ f, setF, ings, settings, roles = false }) {
           const ing = ings.find((x) => x.id === r.ingredientId);
           return (
             <div key={i} className={`recipe-row ${roles ? 'recipe-row-role' : ''}`}>
-              <select className="input" value={r.ingredientId} onChange={(e) => setRow(i, { ingredientId: e.target.value })}>
-                {ings.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-              </select>
+              <Select value={r.ingredientId} onChange={(v) => setRow(i, { ingredientId: v })} ariaLabel="วัตถุดิบ"
+                searchPlaceholder="ค้นหาวัตถุดิบ..." options={ingOptions(ings)} />
               <NumberInput value={r.qty} onChange={(v) => setRow(i, { qty: v })} aria-label="ปริมาณ" />
               <span className="muted small recipe-unit">{ing?.unit}</span>
               {roles && (
@@ -348,15 +355,13 @@ function StepsEditor({ f, setF, ings }) {
               <input className="input" value={st.text} placeholder="รายละเอียดขั้นตอน เช่น ชงกาแฟ, ใส่น้ำแข็งเต็มแก้ว"
                 onChange={(e) => setRow(i, { text: e.target.value })} />
               <div className="step-row-ing">
-                <select className="input" value={st.ingredientId || ''} aria-label="วัตถุดิบจากสต๊อก"
-                  onChange={(e) => {
-                    const id = e.target.value || null;
+                <Select value={st.ingredientId || ''} ariaLabel="วัตถุดิบจากสต๊อก" searchPlaceholder="ค้นหาวัตถุดิบ..."
+                  options={[{ value: '', label: '— ไม่อ้างอิงสต๊อก —' }, ...ingOptions(ings)]}
+                  onChange={(v) => {
+                    const id = v || null;
                     const r = (f.recipe || []).find((x) => x.ingredientId === id);
                     setRow(i, { ingredientId: id, qty: id ? (st.qty || r?.qty || '') : null });
-                  }}>
-                  <option value="">— ไม่อ้างอิงสต๊อก —</option>
-                  {ings.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                </select>
+                  }} />
                 {st.ingredientId && (
                   <>
                     <NumberInput value={st.qty} onChange={(v) => setRow(i, { qty: v })} aria-label="ปริมาณ" />
@@ -441,8 +446,9 @@ function Toppings({ ings }) {
   const crud = useCrud('toppings', 'ท็อปปิ้ง');
   const [f, setF] = useState(null);
   useEffect(() => { setF(crud.editing ? { ...crud.editing } : null); }, [crud.editing]);
-  if (crud.list.loading && !crud.list.data) return <Loading />;
   const rows = crud.list.data || [];
+  const paged = usePaged(rows, 'toppings');
+  if (crud.list.loading && !crud.list.data) return <Loading />;
   return (
     <>
       <div className="toolbar">
@@ -452,11 +458,13 @@ function Toppings({ ings }) {
         </button>
       </div>
       {rows.length ? (
+        <>
+        {paged.pager}
         <div className="card table-card">
           <table className="table table-rows-click">
             <thead><tr><th>ท็อปปิ้ง</th><th className="num">ราคา</th><th className="num">ต้นทุน</th><th className="num hide-sm">กำไร</th><th className="th-sell"><span className="hide-sm">ขาย</span>หน้าร้าน</th><th className="th-sell">นอกสถานที่<span className="hide-sm"> / QR</span></th></tr></thead>
             <tbody>
-              {rows.map((t) => {
+              {paged.pageRows.map((t) => {
                 const cost = costOf(t, ings);
                 return (
                   <tr key={t.id} onClick={() => crud.open(t)} className={t.active || t.activeOutside !== false ? '' : 'row-dim'}>
@@ -474,6 +482,8 @@ function Toppings({ ings }) {
             </tbody>
           </table>
         </div>
+        {paged.pager}
+        </>
       ) : <Empty icon="products" title="ยังไม่มีท็อปปิ้ง" />}
       <EditorModal crud={crud} title={f?.id ? 'แก้ไขท็อปปิ้ง' : 'เพิ่มท็อปปิ้ง'} onSubmit={() => crud.save(f)}>
         {f && (
@@ -513,10 +523,8 @@ function ReplacePicker({ ids, ings, onChange }) {
             </span>
           );
         })}
-        <select className="input input-auto" value="" onChange={(e) => e.target.value && onChange([...ids, e.target.value])} aria-label="เพิ่มวัตถุดิบที่ใช้แทน">
-          <option value="">+ เลือกวัตถุดิบที่ถูกแทน</option>
-          {left.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-        </select>
+        <Select value="" placeholder="+ เลือกวัตถุดิบที่ถูกแทน" className="input-auto" ariaLabel="เพิ่มวัตถุดิบที่ใช้แทน"
+          searchPlaceholder="ค้นหาวัตถุดิบ..." options={ingOptions(left)} onChange={(v) => v && onChange([...ids, v])} />
       </div>
     </Field>
   );
@@ -533,8 +541,9 @@ function Discounts() {
   const crud = useCrud('discounts', 'ส่วนลด');
   const [f, setF] = useState(null);
   useEffect(() => { setF(crud.editing ? { ...crud.editing } : null); }, [crud.editing]);
-  if (crud.list.loading && !crud.list.data) return <Loading />;
   const rows = crud.list.data || [];
+  const paged = usePaged(rows, 'discounts');
+  if (crud.list.loading && !crud.list.data) return <Loading />;
   return (
     <>
       <div className="toolbar">
@@ -544,11 +553,13 @@ function Discounts() {
         </button>
       </div>
       {rows.length ? (
+        <>
+        {paged.pager}
         <div className="card table-card">
           <table className="table table-rows-click">
             <thead><tr><th>ส่วนลด</th><th>เงื่อนไข</th><th>ใช้งาน</th></tr></thead>
             <tbody>
-              {rows.map((d) => (
+              {paged.pageRows.map((d) => (
                 <tr key={d.id} onClick={() => crud.open(d)} className={d.active ? '' : 'row-dim'}>
                   <td><b>{d.name}</b></td>
                   <td><span className="badge badge-discount">{discountLabel(d)}</span></td>
@@ -558,6 +569,8 @@ function Discounts() {
             </tbody>
           </table>
         </div>
+        {paged.pager}
+        </>
       ) : <Empty icon="tag" title="ยังไม่มีส่วนลด" />}
       <EditorModal crud={crud} title={f?.id ? 'แก้ไขส่วนลด' : 'เพิ่มส่วนลด'} onSubmit={() => crud.save(f)}>
         {f && (

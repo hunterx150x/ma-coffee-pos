@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { baht, num, presetRange, thDate, thDateTime, thTime } from '../utils.js';
 import { DateRange, Empty, ErrorBox, Field, Icon, Loading, Modal, NumberInput, PageHead, Tabs, useAsync, useUi } from '../components/ui.jsx';
+import { Pager, Select, usePaged } from '../components/controls.jsx';
 
 const MOVE_LABEL = { in: 'รับเข้า', out: 'เบิกออก', set: 'ตรวจนับ', sale: 'ขาย', void: 'คืนจากยกเลิกบิล' };
 const ADJUST = {
@@ -50,6 +51,7 @@ export default function Stock() {
     .filter((i) => !q || i.name.toLowerCase().includes(q.toLowerCase()))
     .filter((i) => !onlyLow || stockLevel(i) < 2)
     .sort((a, b) => SORTS[sort.key](a, b) * sort.dir);
+  const paged = usePaged(rows, 'stock', { resetOn: [q, onlyLow, sort.key, sort.dir].join('|') });
   const sortBy = (key) => setSort((x) => ({ key, dir: x.key === key ? -x.dir : 1 }));
   const openAdjust = (i, type) => { setErr(''); setAdj({ ing: i, type, qty: '', totalCost: '', note: '' }); };
   const openEdit = (i) => { setErr(''); setEdit({ ...i }); };
@@ -123,6 +125,7 @@ export default function Stock() {
             </button>
             <Tabs value={view} onChange={setView} tabs={[{ key: 'table', label: 'ตาราง' }, { key: 'cards', label: 'การ์ด' }]} />
           </div>
+          {rows.length > 0 && paged.pager}
           {rows.length && view === 'table' ? (
             <div className="card table-card">
               <table className="table stock-table">
@@ -138,7 +141,7 @@ export default function Stock() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((i) => {
+                  {paged.pageRows.map((i) => {
                     const lv = stockLevel(i);
                     return (
                       <tr key={i.id} className={lv < 2 ? `stock-row-${lv === 0 ? 'out' : 'low'}` : ''}>
@@ -176,7 +179,7 @@ export default function Stock() {
             </div>
           ) : rows.length ? (
             <div className="stock-list">
-              {rows.map((i) => {
+              {paged.pageRows.map((i) => {
                 const isLow = i.quantity <= i.minQty;
                 const pct = i.minQty > 0 ? Math.min(100, (i.quantity / (i.minQty * 3)) * 100) : 100;
                 return (
@@ -204,7 +207,9 @@ export default function Stock() {
                 );
               })}
             </div>
-          ) : <Empty icon="stock" title="ไม่พบวัตถุดิบ" />}
+          ) : null}
+          {rows.length > 0 && paged.pager}
+          {!rows.length && <Empty icon="stock" title="ไม่พบวัตถุดิบ" />}
         </>
       ))}
 
@@ -293,26 +298,9 @@ function Moves({ ings }) {
   useEffect(() => { setPage(1); }, [filtersKey]); // back to page 1 whenever a filter changes
   const moves = useAsync(() => api('/stock-moves', { query: { ...range, ingredientId, user, type, perPage, page } }), [filtersKey, page]);
   const d = moves.data;
-  const from = d ? (d.page - 1) * d.perPage + 1 : 0;
-  const to = d ? Math.min(d.total, d.page * d.perPage) : 0;
 
   const pager = d && d.total > 0 && (
-    <div className="pager">
-      <span className="muted small">แสดง {num(from)}–{num(to)} จาก {num(d.total)} รายการ</span>
-      <div className="pager-ctrl">
-        <label className="pager-size">
-          <span className="muted small">ต่อหน้า</span>
-          <select className="input input-auto" value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
-            {PER_PAGE.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-        <button className="icon-btn" disabled={d.page <= 1} onClick={() => setPage(1)} aria-label="หน้าแรก">«</button>
-        <button className="icon-btn" disabled={d.page <= 1} onClick={() => setPage(d.page - 1)} aria-label="ก่อนหน้า"><Icon name="back" size={18} /></button>
-        <span className="pager-page">หน้า {d.page} / {d.pages}</span>
-        <button className="icon-btn" disabled={d.page >= d.pages} onClick={() => setPage(d.page + 1)} aria-label="ถัดไป"><Icon name="next" size={18} /></button>
-        <button className="icon-btn" disabled={d.page >= d.pages} onClick={() => setPage(d.pages)} aria-label="หน้าสุดท้าย">»</button>
-      </div>
-    </div>
+    <Pager page={d.page} pages={d.pages} total={d.total} perPage={d.perPage} sizes={PER_PAGE} onPage={setPage} onPerPage={setPerPage} />
   );
 
   return (
@@ -320,15 +308,10 @@ function Moves({ ings }) {
       <div className="card filters">
         <DateRange value={range} onChange={setRange} />
         <div className="moves-filters">
-          <select className="input" value={ingredientId} onChange={(e) => setIng(e.target.value)} aria-label="วัตถุดิบ">
-            <option value="">วัตถุดิบทั้งหมด</option>
-            {ings.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <select className="input" value={user} onChange={(e) => setUser(e.target.value)} aria-label="ผู้ทำรายการ">
-            <option value="">ผู้ทำรายการทุกคน</option>
-            {(d?.users || []).map((u) => <option key={u} value={u}>{u}</option>)}
-            {user && !(d?.users || []).includes(user) && <option value={user}>{user}</option>}
-          </select>
+          <Select value={ingredientId} onChange={setIng} ariaLabel="วัตถุดิบ" searchPlaceholder="ค้นหาวัตถุดิบ..."
+            options={[{ value: '', label: 'วัตถุดิบทั้งหมด' }, ...ings.map((i) => ({ value: i.id, label: i.name, hint: i.unit }))]} />
+          <Select value={user} onChange={setUser} ariaLabel="ผู้ทำรายการ"
+            options={[{ value: '', label: 'ผู้ทำรายการทุกคน' }, ...[...new Set([...(d?.users || []), ...(user ? [user] : [])])].map((u) => ({ value: u, label: u }))]} />
           <select className="input" value={type} onChange={(e) => setType(e.target.value)} aria-label="ประเภท">
             <option value="">ทุกประเภท</option>
             {MOVE_TYPES.map((t) => <option key={t} value={t}>{MOVE_LABEL[t]}</option>)}
