@@ -1466,7 +1466,6 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .date-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--ink); white-space: nowrap; }
 .date-btn .icon { color: var(--primary-ink); flex-shrink: 0; }
 .date-btn[aria-expanded="true"] { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-50); }
-.cal-pop { width: 300px !important; }
 .cal { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .cal-title { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; font-weight: 700; font-size: 15.5px; color: var(--ink); padding: 6px 10px; border-radius: 10px; }
@@ -1484,3 +1483,15 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .cal-month { min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 14px; }
 .cal-month.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
 .cal-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; }
+
+/* date field: never spill out of its border on small phones */
+.date-btn { min-width: 0; overflow: hidden; }
+.date-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.date-short { display: none; }
+@media (max-width: 420px) {
+  .daterange-inputs { gap: 6px; }
+  .daterange-inputs .date-btn { padding-left: 10px; padding-right: 10px; justify-content: center; }
+  .daterange-inputs .date-btn .icon { display: none; }
+  .daterange-inputs .date-long { display: none; }
+  .daterange-inputs .date-short { display: inline; }
+}

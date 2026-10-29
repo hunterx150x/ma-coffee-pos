@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import { Icon } from './ui.jsx';
 
 // ---------- popover (portal, placed under or above its trigger, closes on outside tap / Escape) ----------
-function usePopover() {
+/** minWidth: the panel is at least this wide (or the trigger's width), but never wider than the screen. */
+function usePopover({ minWidth = 260, fixedWidth = 0 } = {}) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
@@ -15,7 +16,8 @@ function usePopover() {
     const panelH = panelRef.current?.offsetHeight || 320;
     const below = window.innerHeight - r.bottom;
     const up = below < panelH + 12 && r.top > below;
-    const width = Math.max(r.width, 260);
+    const room = window.innerWidth - 16;
+    const width = Math.min(room, fixedWidth || Math.max(r.width, minWidth));
     const left = Math.min(Math.max(8, r.left), window.innerWidth - width - 8);
     setPos({ left, width, ...(up ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }) });
   };
@@ -136,10 +138,14 @@ export const thDateLong = (s) => {
   const d = parse(s);
   return d ? `${d.getDate()} ${TH_MON[d.getMonth()]} ${d.getFullYear() + 543}` : '';
 };
+const thDateShort = (s) => { // "28 ต.ค. 69" for narrow phone screens
+  const d = parse(s);
+  return d ? `${d.getDate()} ${TH_MON[d.getMonth()]} ${(d.getFullYear() + 543) % 100}` : '';
+};
 
 /** Date field ('YYYY-MM-DD') with a Thai calendar popover (Buddhist year, Monday start, today marked). */
 export function DateInput({ value, onChange, min, max, ariaLabel, placeholder = 'เลือกวันที่', className = '' }) {
-  const { open, setOpen, triggerRef, panel } = usePopover();
+  const { open, setOpen, triggerRef, panel } = usePopover({ fixedWidth: 300 });
   const sel = parse(value);
   const [view, setView] = useState(() => sel || new Date());
   const [months, setMonths] = useState(false); // month / year chooser
@@ -164,7 +170,9 @@ export function DateInput({ value, onChange, min, max, ariaLabel, placeholder = 
       <button type="button" ref={triggerRef} className={`input date-btn ${className}`} aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open}
         onClick={() => setOpen(!open)}>
         <Icon name="calendar" size={17} />
-        <span className={value ? '' : 'muted'}>{value ? thDateLong(value) : placeholder}</span>
+        <span className={`date-text ${value ? '' : 'muted'}`}>
+          {value ? <><span className="date-long">{thDateLong(value)}</span><span className="date-short">{thDateShort(value)}</span></> : placeholder}
+        </span>
       </button>
       {panel(
         <div className="cal" role="dialog" aria-label={ariaLabel || 'เลือกวันที่'}>
