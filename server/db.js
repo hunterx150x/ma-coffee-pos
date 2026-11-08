@@ -40,7 +40,10 @@ function normalize(next, meta) {
 export async function load() {
   if (DATABASE_URL) {
     const { default: pg } = await import('pg');
-    pool = new pg.Pool({ connectionString: DATABASE_URL, max: 3 });
+    // Timeouts so an unresponsive database fails loudly (and the host restarts us) instead of hanging forever.
+    pool = new pg.Pool({ connectionString: DATABASE_URL, max: 3, connectionTimeoutMillis: 15000, query_timeout: 60000 });
+    // Idle connections dropped by the database must not crash the process; the pool reconnects on next use.
+    pool.on('error', (e) => console.error('การเชื่อมต่อ Postgres หลุด:', e.message));
     await pool.query(`CREATE TABLE IF NOT EXISTS pos_state (
       key text PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`);
     const { rows } = await pool.query('SELECT key, data FROM pos_state ORDER BY key');

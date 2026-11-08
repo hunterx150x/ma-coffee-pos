@@ -13,7 +13,12 @@ import * as line from './line.js';
 import * as events from './events.js';
 import { audit, auditMutations, describeChanges, describeRecord, itemsText, STATUS_TH } from './audit.js';
 
-await load();
+try {
+  await load();
+} catch (e) {
+  console.error('โหลดฐานข้อมูลไม่สำเร็จ ปิดเซิร์ฟเวอร์เพื่อให้เริ่มใหม่:', e.message);
+  process.exit(1);
+}
 
 const app = express();
 app.set('trust proxy', 1);
