@@ -889,7 +889,7 @@ app.get('/api/customers', anyOf('customers', 'pos'), h((req) => {
   const db = getDb();
   let list = db.customers;
   if (q) list = list.filter((c) => c.name.toLowerCase().includes(q) || (c.phone || '').includes(q) || (c.lineId || '').toLowerCase().includes(q));
-  return [...list].sort((a, b) => (b.lastVisitAt || '').localeCompare(a.lastVisitAt || '')).slice(0, q ? 50 : 500);
+  return [...list].sort((a, b) => (b.lastVisitAt || '').localeCompare(a.lastVisitAt || '')).slice(0, q ? 50 : undefined);
 }));
 const cleanCustomer = (b) => ({
   name: required(str(b.name, 60), 'ชื่อลูกค้า'),

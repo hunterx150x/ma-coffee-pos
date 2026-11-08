@@ -223,16 +223,18 @@ export function summarize(lines) {
 export const LOYALTY_DISCOUNT_ID = 'loyalty';
 
 /**
- * Stamps earned by priced lines: 1 per cup, except excluded categories (e.g. snacks),
- * cups redeemed with stamps, and cups given free by another "free cup" discount.
+ * Stamps earned by priced lines: 1 per full-price cup. No stamps for excluded categories (e.g. snacks)
+ * or for any cup that got a discount: cups redeemed with stamps, cups given free by a "free cup" discount,
+ * and every cup on a line with a baht / percent discount (those apply per cup).
  */
 export function stampsEarned(lines, loyalty) {
   if (!loyalty?.enabled) return 0;
   const excluded = new Set(loyalty.excludeCategoryIds || []);
   return lines.reduce((sum, l) => {
     if (excluded.has(l.categoryId)) return sum;
-    const otherFree = (l.discounts || []).some((d) => d.type === 'free') ? 1 : 0;
-    return sum + Math.max(0, l.qty - (l.rewardQty || 0) - otherFree);
+    const discs = (l.discounts || []).filter((d) => d.type !== 'loyalty' && d.amount > 0);
+    if (discs.some((d) => d.type !== 'free')) return sum;
+    return sum + Math.max(0, l.qty - (l.rewardQty || 0) - discs.length);
   }, 0);
 }
 

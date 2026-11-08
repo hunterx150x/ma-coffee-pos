@@ -1,17 +1,40 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { baht, thDate, thDateTime } from '../utils.js';
 import { Empty, Field, Icon, Loading, Modal, NumberInput, PageHead, useAsync, useUi } from '../components/ui.jsx';
 import { useAuth } from '../App.jsx';
 import StampCard from '../components/StampCard.jsx';
 import { rewardsAvailable } from '../../shared/pricing.js';
-import { usePaged } from '../components/controls.jsx';
+import { Select, usePaged } from '../components/controls.jsx';
+
+const avgSpent = (c) => (c.visits ? Math.round((c.totalSpent || 0) / c.visits) : 0);
+const SORTS = [
+  { value: 'recent', label: 'มาล่าสุด', key: (c) => c.lastVisitAt || '' },
+  { value: 'visits', label: 'มาบ่อยที่สุด', key: (c) => c.visits || 0 },
+  { value: 'spent', label: 'ยอดซื้อรวมสูงสุด', key: (c) => c.totalSpent || 0 },
+  { value: 'avg', label: 'ยอดเฉลี่ยต่อครั้งสูงสุด', key: avgSpent },
+  { value: 'points', label: 'แต้มมากที่สุด', key: (c) => c.points || 0 },
+  { value: 'name', label: 'ชื่อ ก–ฮ' },
+];
+const sortBy = (list, sort) => {
+  if (sort === 'name') return [...list].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+  const { key } = SORTS.find((x) => x.value === sort) || SORTS[0];
+  return [...list].sort((a, b) => { const x = key(a), y = key(b); return x < y ? 1 : x > y ? -1 : 0; });
+};
+const TOPS = [
+  { sort: 'visits', title: 'มาบ่อยที่สุด', icon: 'history', value: (c) => `${c.visits || 0} ครั้ง` },
+  { sort: 'spent', title: 'ยอดซื้อรวมสูงสุด', icon: 'cash', value: (c) => baht(c.totalSpent) },
+  { sort: 'avg', title: 'ยอดเฉลี่ยต่อครั้งสูงสุด', icon: 'reports', value: (c) => baht(avgSpent(c)) },
+  { sort: 'points', title: 'แต้มมากที่สุด', icon: 'tag', value: (c) => `☕ ${c.points || 0}` },
+];
 
 export default function Customers() {
   const { toast, confirm } = useUi();
   const [q, setQ] = useState('');
   const list = useAsync(() => api('/customers', { query: { q } }), [q]);
-  const paged = usePaged(list.data || [], 'customers', { resetOn: q });
+  const [sort, setSort] = useState('recent');
+  const rows = useMemo(() => sortBy(list.data || [], sort), [list.data, sort]);
+  const paged = usePaged(rows, 'customers', { resetOn: q + sort });
   const settings = useAsync(() => api('/settings'), []);
   const loyalty = settings.data?.loyalty;
   const [f, setF] = useState(null);
@@ -44,9 +67,20 @@ export default function Customers() {
           <Icon name="plus" /> เพิ่มลูกค้า
         </button>
       </PageHead>
-      <div className="search search-block">
-        <Icon name="search" size={18} />
-        <input className="input" placeholder="ค้นหาชื่อ เบอร์โทร LINE ID" value={q} onChange={(e) => setQ(e.target.value)} />
+      {!q && list.data?.length > 0 && (
+        <div className="top-boards">
+          {TOPS.map((t) => (
+            <TopBoard key={t.sort} {...t} list={list.data} onSort={() => setSort(t.sort)} onPick={(c) => { setErr(''); setF({ ...c }); }} />
+          ))}
+        </div>
+      )}
+      <div className="filters-row search-block">
+        <div className="search">
+          <Icon name="search" size={18} />
+          <input className="input" placeholder="ค้นหาชื่อ เบอร์โทร LINE ID" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <Select value={sort} onChange={setSort} ariaLabel="เรียงตาม" className="sort-select"
+          options={SORTS.map(({ value, label }) => ({ value, label: `เรียงตาม: ${label}` }))} />
       </div>
       {list.loading && !list.data ? <Loading /> : list.data?.length ? (
         <>
@@ -96,6 +130,25 @@ export default function Customers() {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** Top 5 customers by one measure; tapping a name opens the customer, the header sorts the table by it. */
+function TopBoard({ sort, title, icon, value, list, onSort, onPick }) {
+  const top = sortBy(list, sort).filter((c) => SORTS.find((x) => x.value === sort).key(c) > 0).slice(0, 5);
+  return (
+    <div className="card top-board">
+      <button className="top-board-head" onClick={onSort} title="เรียงตารางตามหัวข้อนี้">
+        <Icon name={icon} size={18} /> <b>{title}</b>
+      </button>
+      {top.length ? top.map((c, i) => (
+        <button key={c.id} className="top-board-row" onClick={() => onPick(c)}>
+          <span className={`top-rank top-rank-${i + 1}`}>{i + 1}</span>
+          <span className="top-name">{c.name}</span>
+          <span className="top-value">{value(c)}</span>
+        </button>
+      )) : <div className="muted small">ยังไม่มีข้อมูล</div>}
     </div>
   );
 }
