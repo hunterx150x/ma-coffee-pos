@@ -238,5 +238,13 @@ export function stampsEarned(lines, loyalty) {
   }, 0);
 }
 
-export const rewardsAvailable = (points, loyalty) =>
+/** Cups that would earn a stamp but don't because they got a discount (excluded categories aren't counted). */
+export function stampsLost(lines, loyalty) {
+  if (!loyalty?.enabled) return 0;
+  const excluded = new Set(loyalty.excludeCategoryIds || []);
+  const eligible = lines.reduce((s, l) => s + (excluded.has(l.categoryId) ? 0 : l.qty), 0);
+  return eligible - stampsEarned(lines, loyalty);
+}
+
+export const rewardsAvailable =(points, loyalty) =>
   loyalty?.enabled && loyalty.cupsPerReward > 0 ? Math.floor(Math.max(0, points || 0) / loyalty.cupsPerReward) : 0;

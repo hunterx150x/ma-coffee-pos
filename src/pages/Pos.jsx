@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import { priceLine, summarize, stampsEarned, rewardsAvailable, roastChoices, cleanCustomDiscount } from '../../shared/pricing.js';
+import { priceLine, summarize, stampsEarned, stampsLost, rewardsAvailable, roastChoices, cleanCustomDiscount } from '../../shared/pricing.js';
 import { baht, discountLabel, sweetLabel, sweetDesc, sweetParts, initial, APP_NAMES, payLabel } from '../utils.js';
 import { Icon, Modal, Field, Loading, ErrorBox, Empty, NumberInput, SweetDetail, useAsync, useUi } from '../components/ui.jsx';
 import Receipt, { LineDetail, printReceipt } from '../components/Receipt.jsx';
@@ -406,6 +406,7 @@ export default function Pos({ go }) {
               ))}
               <div className="sum-row sum-total"><span>รวมรายการนี้</span><span>{baht(draftLine.total)}</span></div>
             </div>
+            <NoStampNotice customer={customer} loyalty={loyalty} lines={[draftLine]} />
             <div className="step-actions">
               <button className="btn btn-primary btn-lg" onClick={commitDraft} disabled={customMissingName}>
                 <Icon name={draft.editIndex != null ? 'check' : 'plus'} /> {draft.editIndex != null ? 'บันทึกการแก้ไข' : 'เพิ่มลงรายการ'}
@@ -428,6 +429,7 @@ export default function Pos({ go }) {
             ) : <Empty title="ยังไม่มีรายการ">กด “เพิ่มเมนู” เพื่อเริ่มเลือกเครื่องดื่ม</Empty>}
             <Totals totals={totals} />
             <StampSummary customer={customer} loyalty={loyalty} lines={lines} />
+            <NoStampNotice customer={customer} loyalty={loyalty} lines={lines} />
             <div className="step-actions step-actions-split">
               <button className="btn btn-outline btn-lg" onClick={startNewItem}><Icon name="plus" /> เพิ่มเมนู</button>
               {!isApp && (
@@ -460,6 +462,7 @@ export default function Pos({ go }) {
             <CartList lines={lines} readOnly onHowTo={setHowToLine} />
             <Totals totals={totals} />
             <StampSummary customer={customer} loyalty={loyalty} lines={lines} />
+            <NoStampNotice customer={customer} loyalty={loyalty} lines={lines} />
             <div className="due">
               <span>{isApp ? `ยอดขายใน ${APP_NAMES[customer.app]} (ชำระผ่านแอพ)` : 'ยอดที่ลูกค้าต้องชำระ'}</span>
               <b>{baht(totals.total)}</b>
@@ -777,6 +780,18 @@ function StampSummary({ customer, loyalty, lines }) {
   );
 }
 
+
+/** Discounted cups don't earn stamps: say so wherever a member's bill is being built. */
+function NoStampNotice({ customer, loyalty, lines }) {
+  const lost = stampsLost(lines, loyalty);
+  if (!lost || !(customer.type === 'old' || (customer.type === 'new' && customer.phone))) return null;
+  return (
+    <div className="no-stamp-notice">
+      <Icon name="alert" size={18} />
+      <span>แต้มจะไม่ถูกนับเพิ่ม {lost} แก้ว เนื่องจากมีการใช้ส่วนลด</span>
+    </div>
+  );
+}
 
 /** Step 1 "ขายในแอพ": which delivery app, plus its order number (optional). */
 function AppPicker({ open, current, onClose, onPick }) {

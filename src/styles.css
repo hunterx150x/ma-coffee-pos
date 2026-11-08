@@ -1515,3 +1515,5 @@ td > .badge:first-child, .user-card-side .badge { margin-left: 0; }
 .top-value { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
 .filters-row .sort-select { flex: 0 0 260px; width: 260px; }
 @media (max-width: 599px) { .filters-row .sort-select { flex: 1 1 100%; width: 100%; } }
+.no-stamp-notice { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--warn-50); border: 1px solid var(--warn-line); color: var(--warn); font-size: 14px; font-weight: 500; }
+.no-stamp-notice .icon { flex: none; margin-top: 1px; }
